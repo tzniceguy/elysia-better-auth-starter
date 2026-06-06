@@ -1,0 +1,37 @@
+{
+	"name": "move",
+	"version": "1.0.0",
+	"private": true,
+	"packageManager": "pnpm@11.1.1",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev:web": "pnpm --dir apps/web dev",
+		"build:web": "pnpm --dir apps/web build",
+		"test:web": "pnpm --dir apps/web test",
+		"lint:web": "pnpm --dir apps/web lint",
+		"check:web": "pnpm --dir apps/web check",
+		"dev:mobile": "pnpm --dir apps/mobile dev",
+		"build:mobile": "pnpm --dir apps/mobile build",
+		"test:mobile": "pnpm --dir apps/mobile test",
+		"lint:mobile": "pnpm --dir apps/mobile lint",
+		"check:mobile": "pnpm --dir apps/mobile check",
+		"dev:api": "pnpm --dir apps/api dev",
+		"build:api": "pnpm --dir apps/api build",
+		"studio:api": "pnpm --dir apps/api db:studio",
+		"db:generate": "pnpm --dir apps/api db:generate",
+		"db:push": "pnpm --dir apps/api db:push",
+		"check:api": "pnpm --dir apps/api typecheck",
+		"test:api": "pnpm --dir apps/api test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "~2.4.5",
+		"bun-types": "^1.3.14",
+		"tsconfig-paths": "^4.2.0"
+	},
+	"engines": {
+		"bun": "^1.3.11"
+	}
+}

@@ -1,0 +1,44 @@
+{
+  "name": "api",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build ./src/index.ts --outdir dist --target bun",
+    "compile": "bun build --compile --minify-whitespace --minify-syntax --target bun --outfile api ./src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --env-file=.env.local",
+    "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config src/util/auth.ts --output src/db/auth-schema.ts --yes",
+    "start": "bun run main.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio",
+    "format": "biome format",
+		"lint": "biome lint",
+		"check": "biome check"
+  },
+  "devDependencies": {
+    "@types/bun": "1",
+    "@types/pg": "catalog:",
+    "dotenv": "catalog:",
+    "drizzle-kit": "^0.31.10",
+    "tsconfig-paths": "catalog:",
+    "tsx": "4.22.4",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/eden": "catalog:",
+    "@elysiajs/openapi": "^1.4.15",
+    "@sinclair/typebox": "^0.34.49",
+    "@t3-oss/env-core": "catalog:",
+    "better-auth": "catalog:",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "catalog:",
+    "logixlysia": "^6.5.0",
+    "nanoid": "^5.1.0",
+    "pg": "^8.21.0",
+    "zod": "catalog:"
+  }
+}

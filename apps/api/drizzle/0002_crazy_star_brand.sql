@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD COLUMN "principal_type" text;

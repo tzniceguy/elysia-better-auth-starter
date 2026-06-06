@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+catalog:
+  '@elysiajs/eden': ^1.4.9
+  '@t3-oss/env-core': ^0.13.11
+  '@types/pg': ^8.20.0
+  better-auth: ^1.6.13
+  dotenv: ^17.4.2
+  elysia: ^1.4.28
+  tsconfig-paths: ^4.2.0
+  typescript: ~6.0.3
+  zod: ^4.4.3
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true

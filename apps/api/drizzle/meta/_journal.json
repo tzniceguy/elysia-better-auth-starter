@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1780503236492,
+      "tag": "0000_typical_harry_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780676046463,
+      "tag": "0001_complete_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780681162501,
+      "tag": "0002_crazy_star_brand",
+      "breakpoints": true
+    }
+  ]
+}
