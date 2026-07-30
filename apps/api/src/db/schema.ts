@@ -7,6 +7,7 @@ import {
 	integer,
 	doublePrecision,
 	index,
+	pgEnum,
 } from "drizzle-orm/pg-core";
 
 export {
@@ -72,6 +73,38 @@ export const driver = pgTable(
 	],
 );
 
+export const staffStatusEnum = pgEnum("staff_status", [
+	"active",
+	"suspended",
+	"deleted",
+]);
+
+export const staff = pgTable(
+	"staff",
+	{
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		id: text("id").primaryKey(),
+		publicId: text("public_id").notNull().unique(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		fullName: text("full_name").notNull(),
+		phoneNumber: text("phone_number").notNull(),
+		avatarUrl: text("avatar_url"),
+		status: staffStatusEnum("status").default("active").notNull(),
+	},
+	(table) => [
+		index("staff_user_id_idx").on(table.userId),
+		index("staff_public_id_idx").on(table.publicId),
+		index("staff_status_idx").on(table.status),
+	],
+);
+
 export const customerRelations = relations(customer, ({ one }) => ({
 	user: one(user, {
 		fields: [customer.userId],
@@ -82,6 +115,13 @@ export const customerRelations = relations(customer, ({ one }) => ({
 export const driverRelations = relations(driver, ({ one }) => ({
 	user: one(user, {
 		fields: [driver.userId],
+		references: [user.id],
+	}),
+}));
+
+export const staffRelations = relations(staff, ({ one }) => ({
+	user: one(user, {
+		fields: [staff.userId],
 		references: [user.id],
 	}),
 }));

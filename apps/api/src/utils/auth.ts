@@ -16,6 +16,8 @@ const auth = betterAuth({
 		additionalFields: {
 			principalType: {
 				type: "string",
+				required: true,
+				defaultValue: "customer",
 			},
 		},
 	},

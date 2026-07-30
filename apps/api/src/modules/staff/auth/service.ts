@@ -1,39 +1,33 @@
 import { db } from "@api/db";
-import { getCustomerByUserId } from "@api/db/lookups";
-import { customer } from "@api/db/schema";
+import { getStaffByUserId } from "@api/db/lookups";
+import { staff } from "@api/db/schema";
 import auth from "@api/utils/auth";
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-export interface CustomerSignUpInput {
+export interface StaffSignUpInput {
 	email: string;
 	password: string;
 	fullName: string;
 	phoneNumber: string;
 }
 
-export interface CustomerSignInInput {
+export interface StaffSignInInput {
 	email: string;
 	password: string;
 }
 
-export interface CustomerProfileData {
+export interface StaffProfileData {
 	id: string;
 	fullName: string;
 	email: string;
 	phoneNumber: string;
 	avatarUrl: string | null;
-	totalRides: number;
 	status: string;
-	notificationPreferences: {
-		pushEnabled: boolean;
-		promotionalEnabled: boolean;
-	};
-	lastActiveAt: string;
-	registeredAt: string;
+	createdAt: string;
+	updatedAt: string;
 }
 
-export type CustomerAuthResult =
+export type StaffAuthResult =
 	| {
 			ok: true;
 			data: {
@@ -44,7 +38,7 @@ export type CustomerAuthResult =
 					name: string;
 					principalType: string | null;
 				};
-				customer: CustomerProfileData;
+				staff: StaffProfileData;
 				setCookieHeader: string | null;
 			};
 	  }
@@ -57,7 +51,7 @@ export type CustomerAuthResult =
 			};
 	  };
 
-export interface CustomerAuthServiceDeps {
+export interface StaffAuthServiceDeps {
 	authHandler?: (request: Request) => Promise<Response>;
 	createProfile?: (data: {
 		userId: string;
@@ -73,12 +67,9 @@ export interface CustomerAuthServiceDeps {
 		fullName: string;
 		phoneNumber: string;
 		avatarUrl: string | null;
-		totalRides: number;
 		status: string;
-		pushEnabled: boolean;
-		promotionalEnabled: boolean;
-		lastActiveAt: Date;
-		registeredAt: Date;
+		createdAt: Date;
+		updatedAt: Date;
 	} | null>;
 	cleanupUser?: (userId: string) => Promise<void>;
 }
@@ -119,28 +110,21 @@ function getSetCookieHeader(response: Response): string | null {
 	return single;
 }
 
-function formatCustomerProfile(
+function formatStaffProfile(
 	row: NonNullable<
-		Awaited<
-			ReturnType<NonNullable<CustomerAuthServiceDeps["getProfileByUserId"]>>
-		>
+		Awaited<ReturnType<NonNullable<StaffAuthServiceDeps["getProfileByUserId"]>>>
 	>,
 	email: string,
-): CustomerProfileData {
+): StaffProfileData {
 	return {
 		id: row.publicId,
 		fullName: row.fullName,
 		email,
 		phoneNumber: row.phoneNumber,
 		avatarUrl: row.avatarUrl,
-		totalRides: row.totalRides,
 		status: row.status,
-		notificationPreferences: {
-			pushEnabled: row.pushEnabled,
-			promotionalEnabled: row.promotionalEnabled,
-		},
-		lastActiveAt: row.lastActiveAt.toISOString(),
-		registeredAt: row.registeredAt.toISOString(),
+		createdAt: row.createdAt.toISOString(),
+		updatedAt: row.updatedAt.toISOString(),
 	};
 }
 
@@ -155,24 +139,23 @@ function extractErrorMessage(
 	};
 }
 
-export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
+export function createStaffAuthService(deps?: StaffAuthServiceDeps) {
 	const authHandler = deps?.authHandler ?? ((req) => auth.handler(req));
-	const createProfile = deps?.createProfile ?? defaultCreateCustomerProfile;
-	const getProfileByUserId =
-		deps?.getProfileByUserId ?? defaultGetCustomerProfileByUserId;
+	const createProfile = deps?.createProfile ?? defaultCreateStaffProfile;
+	const getProfileByUserId = deps?.getProfileByUserId ?? defaultGetStaffByUserId;
 	const cleanupUser = deps?.cleanupUser ?? (async () => {});
 
 	async function signUp(
-		input: CustomerSignUpInput,
+		input: StaffSignUpInput,
 		request: Request,
-	): Promise<CustomerAuthResult> {
+	): Promise<StaffAuthResult> {
 		const forwarded = buildForwardedRequest(
 			"/api/auth/sign-up/email",
 			{
 				name: input.fullName,
 				email: input.email,
 				password: input.password,
-				principalType: "customer",
+				principalType: "staff",
 			},
 			request,
 		);
@@ -188,36 +171,35 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 
 		const authData = (await betterRes.json()) as Record<string, unknown>;
 		const setCookieHeader = getSetCookieHeader(betterRes);
-		const user = authData.user as Record<string, unknown>;
+		const authUser = authData.user as Record<string, unknown>;
 
 		const created = await createProfile({
-			userId: user.id as string,
+			userId: authUser.id as string,
 			fullName: input.fullName,
 			phoneNumber: input.phoneNumber,
 		});
 
 		if (!created) {
-			await cleanupUser(user.id as string);
+			await cleanupUser(authUser.id as string);
 			return {
 				ok: false,
 				error: {
 					status: 500,
-					code: "CUSTOMER_SIGNUP_FAILED",
-					message: "Failed to create customer profile",
+					code: "STAFF_SIGNUP_FAILED",
+					message: "Failed to create staff profile",
 				},
 			};
 		}
 
-		const profile = await getProfileByUserId(user.id as string);
-
+		const profile = await getProfileByUserId(authUser.id as string);
 		if (!profile) {
-			await cleanupUser(user.id as string);
+			await cleanupUser(authUser.id as string);
 			return {
 				ok: false,
 				error: {
 					status: 500,
-					code: "CUSTOMER_SIGNUP_FAILED",
-					message: "Failed to create customer profile",
+					code: "STAFF_SIGNUP_FAILED",
+					message: "Failed to create staff profile",
 				},
 			};
 		}
@@ -227,21 +209,21 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 			data: {
 				token: authData.token as string | null,
 				user: {
-					id: user.id as string,
-					email: user.email as string,
-					name: user.name as string,
-					principalType: "customer",
+					id: authUser.id as string,
+					email: authUser.email as string,
+					name: authUser.name as string,
+					principalType: "staff",
 				},
-				customer: formatCustomerProfile(profile, user.email as string),
+				staff: formatStaffProfile(profile, authUser.email as string),
 				setCookieHeader,
 			},
 		};
 	}
 
 	async function login(
-		input: CustomerSignInInput,
+		input: StaffSignInInput,
 		request: Request,
-	): Promise<CustomerAuthResult> {
+	): Promise<StaffAuthResult> {
 		const forwarded = buildForwardedRequest(
 			"/api/auth/sign-in/email",
 			{
@@ -262,30 +244,28 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 
 		const authData = (await betterRes.json()) as Record<string, unknown>;
 		const setCookieHeader = getSetCookieHeader(betterRes);
-		const user = authData.user as Record<string, unknown>;
-		const principalType = user.principalType as string | null;
-		const acceptedTypes = ["customer", "tenant", "consumer"];
+		const authUser = authData.user as Record<string, unknown>;
+		const principalType = authUser.principalType as string | null;
 
-		if (!principalType || !acceptedTypes.includes(principalType)) {
+		if (principalType !== "staff") {
 			return {
 				ok: false,
 				error: {
 					status: 403,
 					code: "INVALID_PRINCIPAL_TYPE",
-					message: "This resource is for customer only",
+					message: "This resource is for staff only",
 				},
 			};
 		}
 
-		const profile = await getProfileByUserId(user.id as string);
-
+		const profile = await getProfileByUserId(authUser.id as string);
 		if (!profile) {
 			return {
 				ok: false,
 				error: {
 					status: 403,
-					code: "CUSTOMER_LOGIN_FAILED",
-					message: "Customer profile was not found.",
+					code: "STAFF_LOGIN_FAILED",
+					message: "Staff profile was not found.",
 				},
 			};
 		}
@@ -295,12 +275,12 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 			data: {
 				token: authData.token as string | null,
 				user: {
-					id: user.id as string,
-					email: user.email as string,
-					name: user.name as string,
-					principalType: "customer",
+					id: authUser.id as string,
+					email: authUser.email as string,
+					name: authUser.name as string,
+					principalType: "staff",
 				},
-				customer: formatCustomerProfile(profile, user.email as string),
+				staff: formatStaffProfile(profile, authUser.email as string),
 				setCookieHeader,
 			},
 		};
@@ -309,16 +289,16 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 	return { signUp, login };
 }
 
-async function defaultCreateCustomerProfile(data: {
+async function defaultCreateStaffProfile(data: {
 	userId: string;
 	fullName: string;
 	phoneNumber: string;
 }) {
 	const [row] = await db
-		.insert(customer)
+		.insert(staff)
 		.values({
 			id: nanoid(),
-			publicId: `cus_${nanoid(12)}`,
+			publicId: `stf_${nanoid(12)}`,
 			userId: data.userId,
 			fullName: data.fullName,
 			phoneNumber: data.phoneNumber,
@@ -328,8 +308,8 @@ async function defaultCreateCustomerProfile(data: {
 	return { id: row.id, publicId: row.publicId };
 }
 
-async function defaultGetCustomerProfileByUserId(userId: string) {
-	return getCustomerByUserId(userId);
+async function defaultGetStaffByUserId(userId: string) {
+	return getStaffByUserId(userId);
 }
 
-export type CustomerAuthService = ReturnType<typeof createCustomerAuthService>;
+export type StaffAuthService = ReturnType<typeof createStaffAuthService>;

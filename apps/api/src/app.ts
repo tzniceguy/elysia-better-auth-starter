@@ -2,26 +2,36 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import logixlysia from "logixlysia";
-import { createCustomerAuthRoutes } from "./modules/customer/auth/routes";
+import { createCustomerApp } from "./modules/customer";
 import {
 	type CustomerAuthService,
 	createCustomerAuthService,
 } from "./modules/customer/auth/service";
-import { createDriverAuthRoutes } from "./modules/driver/auth/routes";
 import {
-	createDriverAuthService,
-	type DriverAuthService,
-} from "./modules/driver/auth/service";
+	createCustomerProfileService,
+	type CustomerProfileService,
+} from "./modules/customer/profile/service";
+import { createStaffApp } from "./modules/staff";
+import { createStaffAuthService, type StaffAuthService } from "./modules/staff/auth/service";
+import {
+	createStaffProfileService,
+	type StaffProfileService,
+} from "./modules/staff/profile/service";
 import auth from "./utils/auth";
 
 export const createApp = async (services?: {
 	customerAuthService?: CustomerAuthService;
-	driverAuthService?: DriverAuthService;
+	customerProfileService?: CustomerProfileService;
+	staffAuthService?: StaffAuthService;
+	staffProfileService?: StaffProfileService;
 }) => {
 	const customerAuthService =
 		services?.customerAuthService ?? createCustomerAuthService();
-	const driverAuthService =
-		services?.driverAuthService ?? createDriverAuthService();
+	const customerProfileService =
+		services?.customerProfileService ?? createCustomerProfileService();
+	const staffAuthService = services?.staffAuthService ?? createStaffAuthService();
+	const staffProfileService =
+		services?.staffProfileService ?? createStaffProfileService();
 
 	return new Elysia()
 		.use(
@@ -57,8 +67,16 @@ export const createApp = async (services?: {
 							description: "Customer authentication",
 						},
 						{
-							name: "driver-auth",
-							description: "Driver authentication",
+							name: "customer-profile",
+							description: "Customer profile management",
+						},
+						{
+							name: "staff-auth",
+							description: "Staff authentication",
+						},
+						{
+							name: "staff-profile",
+							description: "Staff profile management",
 						},
 					],
 				},
@@ -91,8 +109,18 @@ export const createApp = async (services?: {
 				},
 			},
 		)
-		.use(createCustomerAuthRoutes(customerAuthService))
-		.use(createDriverAuthRoutes(driverAuthService))
+		.use(
+			createCustomerApp({
+				customerAuthService,
+				customerProfileService,
+			}),
+		)
+		.use(
+			createStaffApp({
+				staffAuthService,
+				staffProfileService,
+			}),
+		)
 		.mount(auth.handler);
 };
 
