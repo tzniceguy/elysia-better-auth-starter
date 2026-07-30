@@ -7,7 +7,7 @@ import { authPlugin } from "../auth";
 export const staffGuard = new Elysia({ name: "staff-guard" })
 	.use(authPlugin)
 	.derive({ as: "global" }, async ({ user }) => {
-		if (!user || user.principalType !== "staff") {
+		if (user?.principalType !== "staff") {
 			return { staffSession: null };
 		}
 
@@ -26,7 +26,7 @@ export const staffGuard = new Elysia({ name: "staff-guard" })
 				if (enabled && !staffSession) {
 					return status(403, { message: "Staff only route" });
 				}
-				return { staffSession: staffSession! };
+				return { staffSession };
 			},
 		}),
 	});

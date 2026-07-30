@@ -33,7 +33,7 @@ export const customerGuard = new Elysia({ name: "customer-guard" })
 				if (enabled && !customerSession) {
 					return status(403, { message: "Customers only route" });
 				}
-				return { customerSession: customerSession! };
+				return { customerSession };
 			},
 		}),
 	});

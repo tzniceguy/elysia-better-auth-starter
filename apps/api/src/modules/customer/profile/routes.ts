@@ -70,6 +70,11 @@ export function createCustomerProfileRoutes(
 				.get(
 					"/profile",
 					async ({ customerSession, set }) => {
+						if (!customerSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Customers only route");
+						}
+
 						const result = await service.get(
 							customerSession.customerId,
 							customerSession.userId,
@@ -95,6 +100,11 @@ export function createCustomerProfileRoutes(
 				.put(
 					"/profile",
 					async ({ body, customerSession, set }) => {
+						if (!customerSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Customers only route");
+						}
+
 						const result = await service.update(
 							customerSession.customerId,
 							customerSession.userId,

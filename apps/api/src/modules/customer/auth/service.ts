@@ -2,7 +2,6 @@ import { db } from "@api/db";
 import { getCustomerByUserId } from "@api/db/lookups";
 import { customer } from "@api/db/schema";
 import auth from "@api/utils/auth";
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export interface CustomerSignUpInput {

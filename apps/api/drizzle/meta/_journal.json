@@ -22,6 +22,13 @@
       "when": 1780681162501,
       "tag": "0002_crazy_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785423442044,
+      "tag": "0003_lush_psynapse",
+      "breakpoints": true
     }
   ]
 }

@@ -65,6 +65,11 @@ export function createStaffProfileRoutes(
 				.get(
 					"/profile",
 					async ({ staffSession, set }) => {
+						if (!staffSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Staff only route");
+						}
+
 						const result = await service.get(
 							staffSession.staffId,
 							staffSession.userId,
@@ -90,6 +95,11 @@ export function createStaffProfileRoutes(
 				.put(
 					"/profile",
 					async ({ body, staffSession, set }) => {
+						if (!staffSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Staff only route");
+						}
+
 						const result = await service.update(
 							staffSession.staffId,
 							staffSession.userId,
