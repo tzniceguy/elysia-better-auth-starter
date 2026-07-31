@@ -6,7 +6,7 @@ export const env = createEnv({
 		DATABASE_URL: z.url(),
 		BETTER_AUTH_SECRET: z.string().min(1),
 		BETTER_AUTH_URL: z.string().url(),
-		PORT: z.string(),
+		DB_PORT: z.string(),
 	},
 	runtimeEnv: process.env,
 });
