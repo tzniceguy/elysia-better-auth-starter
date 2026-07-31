@@ -8,11 +8,14 @@ import {
 	createCustomerAuthService,
 } from "./modules/customer/auth/service";
 import {
-	createCustomerProfileService,
 	type CustomerProfileService,
+	createCustomerProfileService,
 } from "./modules/customer/profile/service";
 import { createStaffApp } from "./modules/staff";
-import { createStaffAuthService, type StaffAuthService } from "./modules/staff/auth/service";
+import {
+	createStaffAuthService,
+	type StaffAuthService,
+} from "./modules/staff/auth/service";
 import {
 	createStaffProfileService,
 	type StaffProfileService,
@@ -29,7 +32,8 @@ export const createApp = async (services?: {
 		services?.customerAuthService ?? createCustomerAuthService();
 	const customerProfileService =
 		services?.customerProfileService ?? createCustomerProfileService();
-	const staffAuthService = services?.staffAuthService ?? createStaffAuthService();
+	const staffAuthService =
+		services?.staffAuthService ?? createStaffAuthService();
 	const staffProfileService =
 		services?.staffProfileService ?? createStaffProfileService();
 
@@ -55,9 +59,9 @@ export const createApp = async (services?: {
 			openapi({
 				documentation: {
 					info: {
-						title: "Move API",
+						title: "Platform API",
 						version: "0.0.0",
-						description: "Shared backend API for customer and driver clients.",
+						description: "Shared backend API for customer and staff clients.",
 					},
 					tags: [
 						{ name: "system", description: "System and health endpoints" },
@@ -85,7 +89,7 @@ export const createApp = async (services?: {
 		.get(
 			"/",
 			() => ({
-				name: "move-api",
+				name: "platform-api",
 				status: "ok",
 				docs: "/openapi",
 			}),
@@ -99,7 +103,7 @@ export const createApp = async (services?: {
 		.get(
 			"/health",
 			() => ({
-				name: "move-api",
+				name: "platform-api",
 				status: "ok",
 			}),
 			{
