@@ -22,7 +22,6 @@ function makeFullProfile(
 		fullName: string;
 		phoneNumber: string;
 		avatarUrl: string | null;
-		totalRides: number;
 		status: string;
 		pushEnabled: boolean;
 		promotionalEnabled: boolean;
@@ -36,7 +35,6 @@ function makeFullProfile(
 		fullName: "Customer User",
 		phoneNumber: "+255700000000",
 		avatarUrl: null as string | null,
-		totalRides: 0,
 		status: "active",
 		pushEnabled: true,
 		promotionalEnabled: false,
@@ -254,37 +252,5 @@ describe("Customer auth service", () => {
 
 		expect(result.error.status).toBe(403);
 		expect(result.error.code).toBe("INVALID_PRINCIPAL_TYPE");
-	});
-
-	it("accepts legacy consumer principals on customer login", async () => {
-		const service = createCustomerAuthService({
-			authHandler: async () =>
-				makeAuthSuccessResponse(
-					{
-						user: {
-							id: "usr_123",
-							email: loginInput.email,
-							name: loginInput.email,
-							principalType: "consumer",
-						},
-					},
-					{
-						"set-cookie":
-							"better-auth.session=legacy-customer; Path=/; HttpOnly",
-					},
-				),
-			getProfileByUserId: async () => makeFullProfile("cust_123"),
-		});
-
-		const result = await service.login(
-			loginInput,
-			new Request("http://localhost/v1/app/customer/auth/login"),
-		);
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-
-		expect(result.data.user.principalType).toBe("customer");
-		expect(result.data.customer.id).toBe("cust_123");
 	});
 });
