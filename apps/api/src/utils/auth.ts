@@ -15,9 +15,14 @@ const auth = betterAuth({
 	user: {
 		additionalFields: {
 			principalType: {
-				type: "string",
+				type: ["staff", "customer"],
 				required: true,
 				defaultValue: "customer",
+			},
+			staffRole: {
+				type: ["admin", "operations", "support"],
+				required: false,
+				input: false,
 			},
 		},
 	},
