@@ -2,13 +2,6 @@ import { fail, ok } from "@api/utils/response";
 import { Elysia, t } from "elysia";
 import { createStaffAuthService, type StaffAuthService } from "./service";
 
-const signUpBody = t.Object({
-	email: t.String(),
-	password: t.String(),
-	fullName: t.String(),
-	phoneNumber: t.String(),
-});
-
 const signInBody = t.Object({
 	email: t.String(),
 	password: t.String(),
@@ -69,74 +62,38 @@ export function createStaffAuthRoutes(
 	return new Elysia({
 		prefix: "/v1/app/staff/auth",
 		tags: ["staff-auth"],
-	})
-		.post(
-			"/sign-up",
-			async ({ body, request, set }) => {
-				const result = await service.signUp(body, request);
+	}).post(
+		"/login",
+		async ({ body, request, set }) => {
+			const result = await service.login(body, request);
 
-				if (!result.ok) {
-					set.status = result.error.status;
-					return fail(result.error.code, result.error.message);
-				}
+			if (!result.ok) {
+				set.status = result.error.status;
+				return fail(result.error.code, result.error.message);
+			}
 
-				if (result.data.setCookieHeader) {
-					set.headers["set-cookie"] = result.data.setCookieHeader;
-				}
+			if (result.data.setCookieHeader) {
+				set.headers["set-cookie"] = result.data.setCookieHeader;
+			}
 
-				return ok({
-					token: result.data.token,
-					user: result.data.user,
-					staff: result.data.staff,
-				});
+			return ok({
+				token: result.data.token,
+				user: result.data.user,
+				staff: result.data.staff,
+			});
+		},
+		{
+			body: signInBody,
+			response: {
+				200: successResponse,
+				400: errorResponse,
+				401: errorResponse,
+				403: errorResponse,
 			},
-			{
-				body: signUpBody,
-				response: {
-					200: successResponse,
-					400: errorResponse,
-					409: errorResponse,
-					422: errorResponse,
-					500: errorResponse,
-				},
-				detail: {
-					tags: ["staff-auth"],
-					summary: "Register a staff account",
-				},
+			detail: {
+				tags: ["staff-auth"],
+				summary: "Staff login",
 			},
-		)
-		.post(
-			"/login",
-			async ({ body, request, set }) => {
-				const result = await service.login(body, request);
-
-				if (!result.ok) {
-					set.status = result.error.status;
-					return fail(result.error.code, result.error.message);
-				}
-
-				if (result.data.setCookieHeader) {
-					set.headers["set-cookie"] = result.data.setCookieHeader;
-				}
-
-				return ok({
-					token: result.data.token,
-					user: result.data.user,
-					staff: result.data.staff,
-				});
-			},
-			{
-				body: signInBody,
-				response: {
-					200: successResponse,
-					400: errorResponse,
-					401: errorResponse,
-					403: errorResponse,
-				},
-				detail: {
-					tags: ["staff-auth"],
-					summary: "Staff login",
-				},
-			},
-		);
+		},
+	);
 }
