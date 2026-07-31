@@ -13,6 +13,7 @@ export const user = pgTable("user", {
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
   principalType: text("principal_type"),
+  staffRole: text("staff_role"),
 });
 
 export const session = pgTable(

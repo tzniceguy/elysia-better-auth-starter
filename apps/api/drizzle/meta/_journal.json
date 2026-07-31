@@ -29,6 +29,13 @@
       "when": 1785423442044,
       "tag": "0003_lush_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785508918653,
+      "tag": "0004_military_paladin",
+      "breakpoints": true
     }
   ]
 }
