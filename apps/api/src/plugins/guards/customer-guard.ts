@@ -4,17 +4,10 @@ import { eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { authPlugin } from "../auth";
 
-const customerPrincipalTypes = ["customer", "tenant", "consumer"] as const;
-
 export const customerGuard = new Elysia({ name: "customer-guard" })
 	.use(authPlugin)
 	.derive({ as: "global" }, async ({ user }) => {
-		if (
-			!user?.principalType ||
-			!customerPrincipalTypes.includes(
-				user.principalType as (typeof customerPrincipalTypes)[number],
-			)
-		) {
+		if (user?.principalType !== "customer") {
 			return { customerSession: null };
 		}
 
