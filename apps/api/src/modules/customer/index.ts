@@ -1,16 +1,16 @@
 import Elysia from "elysia";
 import { createCustomerAuthRoutes } from "./auth/routes";
 import {
-	createCustomerAuthService,
 	type CustomerAuthService,
+	createCustomerAuthService,
 } from "./auth/service";
 import { createCustomerProfileRoutes } from "./profile/routes";
 import {
-	createCustomerProfileService,
 	type CustomerProfileService,
+	createCustomerProfileService,
 } from "./profile/service";
 
-export const createCustomerApp = (services?: {
+export const customerApp = async (services?: {
 	customerAuthService?: CustomerAuthService;
 	customerProfileService?: CustomerProfileService;
 }) => {
@@ -19,7 +19,7 @@ export const createCustomerApp = (services?: {
 	const customerProfileService =
 		services?.customerProfileService ?? createCustomerProfileService();
 
-	return new Elysia()
+	return new Elysia({ normalize: "typebox" })
 		.use(createCustomerAuthRoutes(customerAuthService))
 		.use(createCustomerProfileRoutes(customerProfileService));
 };

@@ -62,6 +62,7 @@ export function createCustomerProfileRoutes(
 	return new Elysia({
 		prefix: "/v1/app/customer",
 		tags: ["customer-profile"],
+		normalize: "typebox",
 	})
 		.use(customerGuard)
 		.guard({ customerOnly: true }, (app) =>

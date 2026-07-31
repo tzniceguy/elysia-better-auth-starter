@@ -58,6 +58,7 @@ export function createStaffProfileRoutes(
 	return new Elysia({
 		prefix: "/v1/app/staff",
 		tags: ["staff-profile"],
+		normalize: "typebox",
 	})
 		.use(staffGuard)
 		.guard({ staffOnly: true }, (app) =>

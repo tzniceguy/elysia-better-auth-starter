@@ -62,6 +62,7 @@ export function createStaffAuthRoutes(
 	return new Elysia({
 		prefix: "/v1/app/staff/auth",
 		tags: ["staff-auth"],
+		normalize: "typebox",
 	}).post(
 		"/login",
 		async ({ body, request, set }) => {

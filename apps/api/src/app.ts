@@ -2,42 +2,14 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import logixlysia from "logixlysia";
-import { createCustomerApp } from "./modules/customer";
-import {
-	type CustomerAuthService,
-	createCustomerAuthService,
-} from "./modules/customer/auth/service";
-import {
-	type CustomerProfileService,
-	createCustomerProfileService,
-} from "./modules/customer/profile/service";
-import { createStaffApp } from "./modules/staff";
-import {
-	createStaffAuthService,
-	type StaffAuthService,
-} from "./modules/staff/auth/service";
-import {
-	createStaffProfileService,
-	type StaffProfileService,
-} from "./modules/staff/profile/service";
+import { customerApp } from "./modules/customer";
+import { staffApp } from "./modules/staff";
 import auth from "./utils/auth";
 
-export const createApp = async (services?: {
-	customerAuthService?: CustomerAuthService;
-	customerProfileService?: CustomerProfileService;
-	staffAuthService?: StaffAuthService;
-	staffProfileService?: StaffProfileService;
-}) => {
-	const customerAuthService =
-		services?.customerAuthService ?? createCustomerAuthService();
-	const customerProfileService =
-		services?.customerProfileService ?? createCustomerProfileService();
-	const staffAuthService =
-		services?.staffAuthService ?? createStaffAuthService();
-	const staffProfileService =
-		services?.staffProfileService ?? createStaffProfileService();
+const MAX_REQUEST_BODY_SIZE = 5 * 1024 * 1024;
 
-	return new Elysia()
+export const createApp = async () => {
+	return new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
 		.use(
 			logixlysia({
 				config: {
@@ -66,22 +38,6 @@ export const createApp = async (services?: {
 					tags: [
 						{ name: "system", description: "System and health endpoints" },
 						{ name: "better-auth", description: "Better Auth endpoints" },
-						{
-							name: "customer-auth",
-							description: "Customer authentication",
-						},
-						{
-							name: "customer-profile",
-							description: "Customer profile management",
-						},
-						{
-							name: "staff-auth",
-							description: "Staff authentication",
-						},
-						{
-							name: "staff-profile",
-							description: "Staff profile management",
-						},
 					],
 				},
 			}),
@@ -113,18 +69,8 @@ export const createApp = async (services?: {
 				},
 			},
 		)
-		.use(
-			createCustomerApp({
-				customerAuthService,
-				customerProfileService,
-			}),
-		)
-		.use(
-			createStaffApp({
-				staffAuthService,
-				staffProfileService,
-			}),
-		)
+		.use(customerApp())
+		.use(staffApp())
 		.mount(auth.handler);
 };
 

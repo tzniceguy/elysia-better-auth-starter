@@ -7,15 +7,16 @@ import {
 	type StaffProfileService,
 } from "./profile/service";
 
-export const createStaffApp = (services?: {
+export const staffApp = async (services?: {
 	staffAuthService?: StaffAuthService;
 	staffProfileService?: StaffProfileService;
 }) => {
-	const staffAuthService = services?.staffAuthService ?? createStaffAuthService();
+	const staffAuthService =
+		services?.staffAuthService ?? createStaffAuthService();
 	const staffProfileService =
 		services?.staffProfileService ?? createStaffProfileService();
 
-	return new Elysia()
+	return new Elysia({ normalize: "typebox" })
 		.use(createStaffAuthRoutes(staffAuthService))
 		.use(createStaffProfileRoutes(staffProfileService));
 };

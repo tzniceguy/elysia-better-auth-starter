@@ -73,6 +73,7 @@ export function createCustomerAuthRoutes(
 	return new Elysia({
 		prefix: "/v1/app/customer/auth",
 		tags: ["customer-auth"],
+		normalize: "typebox",
 	})
 		.post(
 			"/sign-up",
