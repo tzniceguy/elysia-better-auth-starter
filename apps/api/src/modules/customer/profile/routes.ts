@@ -12,7 +12,6 @@ const customerProfileSchema = t.Object({
 	email: t.String(),
 	phoneNumber: t.String(),
 	avatarUrl: t.Union([t.String(), t.Null()]),
-	totalRides: t.Number(),
 	status: t.String(),
 	notificationPreferences: t.Object({
 		pushEnabled: t.Boolean(),

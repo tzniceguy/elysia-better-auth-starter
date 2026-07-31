@@ -8,7 +8,6 @@ export interface CustomerProfileData {
 	email: string;
 	phoneNumber: string;
 	avatarUrl: string | null;
-	totalRides: number;
 	status: string;
 	notificationPreferences: {
 		pushEnabled: boolean;
@@ -53,7 +52,6 @@ const mapCustomerProfile = (row: {
 	email: row.email,
 	phoneNumber: row.profile.phoneNumber,
 	avatarUrl: row.profile.avatarUrl,
-	totalRides: row.profile.totalRides,
 	status: row.profile.status,
 	notificationPreferences: {
 		pushEnabled: row.profile.pushEnabled,

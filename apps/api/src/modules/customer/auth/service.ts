@@ -22,7 +22,6 @@ export interface CustomerProfileData {
 	email: string;
 	phoneNumber: string;
 	avatarUrl: string | null;
-	totalRides: number;
 	status: string;
 	notificationPreferences: {
 		pushEnabled: boolean;
@@ -72,7 +71,6 @@ export interface CustomerAuthServiceDeps {
 		fullName: string;
 		phoneNumber: string;
 		avatarUrl: string | null;
-		totalRides: number;
 		status: string;
 		pushEnabled: boolean;
 		promotionalEnabled: boolean;
@@ -132,7 +130,6 @@ function formatCustomerProfile(
 		email,
 		phoneNumber: row.phoneNumber,
 		avatarUrl: row.avatarUrl,
-		totalRides: row.totalRides,
 		status: row.status,
 		notificationPreferences: {
 			pushEnabled: row.pushEnabled,
@@ -263,9 +260,8 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 		const setCookieHeader = getSetCookieHeader(betterRes);
 		const user = authData.user as Record<string, unknown>;
 		const principalType = user.principalType as string | null;
-		const acceptedTypes = ["customer", "tenant", "consumer"];
 
-		if (!principalType || !acceptedTypes.includes(principalType)) {
+		if (principalType !== "customer") {
 			return {
 				ok: false,
 				error: {
