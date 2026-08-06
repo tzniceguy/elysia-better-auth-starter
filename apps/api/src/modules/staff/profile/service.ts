@@ -76,7 +76,11 @@ export function createStaffProfileService(): StaffProfileService {
 		return { ok: true, data: mapStaffProfile(row) };
 	};
 
-	const update: StaffProfileService["update"] = async (staffId, userId, input) => {
+	const update: StaffProfileService["update"] = async (
+		staffId,
+		userId,
+		input,
+	) => {
 		const updates: Partial<{
 			fullName: string;
 			phoneNumber: string;
@@ -85,7 +89,8 @@ export function createStaffProfileService(): StaffProfileService {
 		}> = {};
 
 		if (input.fullName !== undefined) updates.fullName = input.fullName;
-		if (input.phoneNumber !== undefined) updates.phoneNumber = input.phoneNumber;
+		if (input.phoneNumber !== undefined)
+			updates.phoneNumber = input.phoneNumber;
 		if (input.avatarUrl !== undefined) updates.avatarUrl = input.avatarUrl;
 
 		if (Object.keys(updates).length === 0) {

@@ -1,4 +1,4 @@
-import { fail, ok } from "@api/utils/response";
+import { fail, ok } from "@api/lib/http";
 import { Elysia, t } from "elysia";
 import { createStaffAuthService, type StaffAuthService } from "./service";
 

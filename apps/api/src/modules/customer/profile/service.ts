@@ -97,7 +97,8 @@ export function createCustomerProfileService(): CustomerProfileService {
 		}> = {};
 
 		if (input.fullName !== undefined) updates.fullName = input.fullName;
-		if (input.phoneNumber !== undefined) updates.phoneNumber = input.phoneNumber;
+		if (input.phoneNumber !== undefined)
+			updates.phoneNumber = input.phoneNumber;
 		if (input.avatarUrl !== undefined) updates.avatarUrl = input.avatarUrl;
 
 		if (Object.keys(updates).length === 0) {

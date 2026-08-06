@@ -1,9 +1,9 @@
+import { fail, ok } from "@api/lib/http";
 import { customerGuard } from "@api/plugins/guards/customer-guard";
-import { fail, ok } from "@api/utils/response";
 import { Elysia, t } from "elysia";
 import {
-	createCustomerProfileService,
 	type CustomerProfileService,
+	createCustomerProfileService,
 } from "./service";
 
 const customerProfileSchema = t.Object({

@@ -142,7 +142,8 @@ function extractErrorMessage(
 export function createStaffAuthService(deps?: StaffAuthServiceDeps) {
 	const authHandler = deps?.authHandler ?? ((req) => auth.handler(req));
 	const createProfile = deps?.createProfile ?? defaultCreateStaffProfile;
-	const getProfileByUserId = deps?.getProfileByUserId ?? defaultGetStaffByUserId;
+	const getProfileByUserId =
+		deps?.getProfileByUserId ?? defaultGetStaffByUserId;
 	const cleanupUser = deps?.cleanupUser ?? (async () => {});
 
 	async function signUp(

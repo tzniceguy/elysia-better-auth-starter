@@ -1,10 +1,7 @@
+import { fail, ok } from "@api/lib/http";
 import { staffGuard } from "@api/plugins/guards/staff-guard";
-import { fail, ok } from "@api/utils/response";
 import { Elysia, t } from "elysia";
-import {
-	createStaffProfileService,
-	type StaffProfileService,
-} from "./service";
+import { createStaffProfileService, type StaffProfileService } from "./service";
 
 const staffProfileSchema = t.Object({
 	id: t.String(),
