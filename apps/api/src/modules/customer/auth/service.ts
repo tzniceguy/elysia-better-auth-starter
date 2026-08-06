@@ -1,7 +1,7 @@
 import { db } from "@api/db";
+import { getCustomerByUserId } from "@api/db/lookups";
 import { customer } from "@api/db/schema";
 import auth from "@api/utils/auth";
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export interface CustomerSignUpInput {
@@ -22,7 +22,6 @@ export interface CustomerProfileData {
 	email: string;
 	phoneNumber: string;
 	avatarUrl: string | null;
-	totalRides: number;
 	status: string;
 	notificationPreferences: {
 		pushEnabled: boolean;
@@ -72,7 +71,6 @@ export interface CustomerAuthServiceDeps {
 		fullName: string;
 		phoneNumber: string;
 		avatarUrl: string | null;
-		totalRides: number;
 		status: string;
 		pushEnabled: boolean;
 		promotionalEnabled: boolean;
@@ -132,7 +130,6 @@ function formatCustomerProfile(
 		email,
 		phoneNumber: row.phoneNumber,
 		avatarUrl: row.avatarUrl,
-		totalRides: row.totalRides,
 		status: row.status,
 		notificationPreferences: {
 			pushEnabled: row.pushEnabled,
@@ -263,9 +260,8 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 		const setCookieHeader = getSetCookieHeader(betterRes);
 		const user = authData.user as Record<string, unknown>;
 		const principalType = user.principalType as string | null;
-		const acceptedTypes = ["customer", "consumer"];
 
-		if (!principalType || !acceptedTypes.includes(principalType)) {
+		if (principalType !== "customer") {
 			return {
 				ok: false,
 				error: {
@@ -328,12 +324,7 @@ async function defaultCreateCustomerProfile(data: {
 }
 
 async function defaultGetCustomerProfileByUserId(userId: string) {
-	const [row] = await db
-		.select()
-		.from(customer)
-		.where(eq(customer.userId, userId))
-		.limit(1);
-	return row ?? null;
+	return getCustomerByUserId(userId);
 }
 
 export type CustomerAuthService = ReturnType<typeof createCustomerAuthService>;

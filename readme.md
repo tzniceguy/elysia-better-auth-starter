@@ -51,7 +51,7 @@ mono-repo/
 │   │   │   ├── index.ts              Entry point
 │   │   │   ├── env.ts                @t3-oss/env-core validation
 │   │   │   ├── db/                   Schema, migrations, connection pool
-│   │   │   ├── modules/              Feature slices (customer, driver)
+│   │   │   ├── modules/              Feature slices (customer, staff)
 │   │   │   └── util/                 Auth config, response helpers
 │   │   ├── tests/                    bun:test with dependency injection
 │   │   └── drizzle/                  Generated SQL migrations
@@ -151,7 +151,7 @@ dependencies, making them fully mockable without a database.
 
 ## Project Conventions
 
-- **Database tables**: snake_case, singular names (e.g. `customer`, `driver`)
+- **Database tables**: snake_case, singular names (e.g. `customer`, `staff`)
 - **IDs**: internal `id` is never exposed; use NanoID `public_id` for external references
 - **API auth**: Better Auth mounted via Elysia `.mount()`, principal type stored as user additional field
 - **Migrations**: always generated with `drizzle-kit generate` — never hand-write SQL

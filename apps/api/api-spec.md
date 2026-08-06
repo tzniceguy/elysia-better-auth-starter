@@ -1,11 +1,16 @@
-# Move Platform API Specification
+# Platform Template
+
+> **What this is:** a shared architectural template for standing up new platforms on the same backend design. Every section below is the **fixed template** — none of it is tied to any specific application.
+>
+> **The one module that never changes, regardless of what you build on Tenet, is Authentication & Authorization (Section 3).** Everything domain-specific — the resource being transacted, its lifecycle, its fields — is a pluggable module that a new application defines from scratch using the patterns in Sections 4–8, following the checklist in Section 15.
 
 > **Version:** v1  
-> **Base URL:** `https://api.move.app/v1`  
+> **Base URL:** `https://api.app.com/v1`  
 > **Protocol:** HTTPS · JSON  
 > **Timestamps:** ISO 8601 UTC  
 > **Money:** Integer minor units + explicit currency field  
-> **Pagination:** Cursor-based
+> **Pagination:** Cursor-based  
+> **Principals (fixed):** `customer` · `staff` only
 
 ---
 
@@ -13,102 +18,124 @@
 
 1. [Platform Overview](#1-platform-overview)
 2. [Backend Stack](#2-backend-stack)
-3. [Authentication & Authorization](#3-authentication--authorization)
-4. [Domain Model (ERD)](#4-domain-model-erd)
-5. [State Machines](#5-state-machines)
+3. [Authentication & Authorization (fixed core)](#3-authentication--authorization-fixed-core)
+4. [Domain Module Pattern](#4-domain-module-pattern)
+5. [State Machine Pattern](#5-state-machine-pattern)
 6. [API Conventions](#6-api-conventions)
-7. [App API — Customer Surface](#7-app-api--customer-surface)
-8. [App API — Driver Surface](#8-app-api--driver-surface)
-9. [Admin API](#9-admin-api)
-10. [Internal API](#10-internal-api)
-11. [Realtime Events](#11-realtime-events)
-12. [Background Jobs](#12-background-jobs)
+7. [Route Surface Architecture](#7-route-surface-architecture)
+8. [App API — Customer Surface (template)](#8-app-api--customer-surface-template)
+9. [Admin API (template)](#9-admin-api-template)
+10. [Internal API (template)](#10-internal-api-template)
+11. [Realtime Events (template)](#11-realtime-events-template)
+12. [Background Jobs (template)](#12-background-jobs-template)
 13. [Audit & Compliance](#13-audit--compliance)
 14. [Treaty SDK Guidance](#14-treaty-sdk-guidance)
+15. [How to Instantiate a New App from This Template](#15-how-to-instantiate-a-new-app-from-this-template)
 
 ---
 
 ## 1. Platform Overview
 
-The Move platform is a shared single-backend API that powers all first-party clients:
+Tenet is a shared single-backend template that powers all first-party clients of a given application:
 
-- **customer** — mobile app users who request relocation rides
-- **driver** — partner users who accept and complete relocation tasks
+- **customer** — the normal end user (requests a service, places an order, books a resource, manages their account, etc.)
 - **staff** — internal operations, finance, support, and platform management
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Move Platform API                     │
-│                  https://api.move.app                    │
-├──────────────────┬───────────────────┬──────────────────┤
-│   Customer App   │    Driver App     │  Admin Dashboard  │
-│ /v1/app/customer │  /v1/app/driver   │    /v1/admin      │
-└──────────────────┴───────────────────┴──────────────────┘
-         ↕                  ↕                   ↕
+┌─────────────────────────────────────────────────────┐
+│                    Platform API                      │
+│                 https://api.app.com                  │
+├─────────────────────────────────────────────────────┤
+│           Customer App*          │       Admin       │
+│         /v1/app/customer         │     /v1/admin     │
+└─────────────────────────────────────────────────────┘
+         ↕                                    ↕
 ┌─────────────────────────────────────────────────────────┐
 │            Shared Domain · Shared DB · Shared Auth       │
 │              /api/auth/*    /v1/internal/*               │
 └─────────────────────────────────────────────────────────┘
 ```
 
+_\* Multiple customer-side clients can exist (web, mobile, kiosk…), all under `/v1/app/customer/*` and shared `/v1/app/*` services._
+
 **Design principles:**
 
-- One shared domain model, one database, one auth system, one event bus
-- Client-specific route groups with role-specific permission checks
-- Core business logic must not be embedded inside client-only route handlers
+- One shared domain model, one database, one auth system, one event bus per application.
+- Client-specific route groups with principal-specific permission checks.
+- Core business logic must not be embedded inside client-only route handlers.
+- **The Authentication & Authorization module (Section 3) is identical across every application built on Tenet.** New applications never redesign it — they only add profile columns and permission sets that hang off it.
+- Everything else — the transactable resource, its state machine, its fields, its route surface content — is a **domain module** that each application defines independently, following the shape described in Sections 4–8.
+
+**Default principal set is always two:** `customer` and `staff`. Adding further principal types is an explicit extension of Section 3, not part of this template.
 
 ---
 
 ## 2. Backend Stack
 
-| Concern | Technology |
-|---|---|
-| Runtime | Bun |
-| API framework | Elysia |
-| Typed client generation | Treaty |
-| Database | PostgreSQL |
-| ORM | Drizzle ORM |
-| Validation / contracts | Zod |
-| Cache / queue | Redis |
-| Background jobs | Redis-backed workers |
-| Object storage | S3-compatible |
-| Realtime | SSE or WebSockets via Elysia |
-| API documentation | OpenAPI |
+| Concern                 | Technology                         |
+| ----------------------- | ---------------------------------- |
+| Runtime                 | Bun                                |
+| API framework           | Elysia                             |
+| Typed client generation | Treaty                             |
+| Database                | PostgreSQL                         |
+| ORM                     | Drizzle ORM                        |
+| Validation / contracts  | TypeBox (via Elysia `t`)           |
+| Auth                    | Better Auth                        |
+| Cache / queue           | Redis                              |
+| Background jobs         | Redis-backed workers (e.g. BullMQ) |
+| Object storage          | S3-compatible                      |
+| Realtime                | SSE or WebSockets via Elysia       |
+| API documentation       | OpenAPI                            |
 
-  ### 2.1 Backend app structure 
+### 2.1 Backend App Structure
+
+```
 apps/api/src/
 ├─ index.ts
 ├─ app.ts
+├─ env.ts
+├─ db/
+│  ├─ index.ts
+│  ├─ schema.ts                 # re-exports
+│  ├─ auth-schema.ts            # fixed — Better Auth tables
+│  ├─ platform-schema.ts        # customer + domain tables
+│  ├─ rbac-schema.ts            # fixed skeleton
+│  └─ lookups.ts
+├─ lib/
+│  ├─ http.ts                   # fixed — ok() / fail() envelope
+│  └─ response-schema.ts        # fixed — TypeBox envelope schemas
 ├─ plugins/
-│  ├─ auth.ts
-│  ├─ db.ts
-│  ├─ permissions.ts
-│  ├─ redis.ts
-│  └─ realtime.ts
+│  ├─ auth.ts                   # fixed — session derive + scope macro
+│  └─ guards/
+│     ├─ customer-guard.ts      # fixed
+│     └─ staff-guard.ts         # fixed — permission macros
 ├─ modules/
-│  ├─ auth/
-│  ├─ admins/
-│  ├─ customers/
-│  ├─ drivers/
-│  ├─ payouts/
-│  ├─ notifications/
-│  ├─ chat/
-│  ├─ analytics/
-│  └─ uploads/
-├─ routes/
-│  ├─ app/
-│  ├─ admin/
-│  └─ internal/
-└─ workers/
+│  ├─ customer/
+│  │  ├─ auth/                  # fixed shape — wrappers around Better Auth
+│  │  ├─ profile/               # fixed shape, app-specific fields allowed
+│  │  └─ …                      # domain features under customer surface
+│  ├─ domain/                   # <-- app-specific: RESOURCE and related logic
+│  ├─ uploads/                  # fixed
+│  ├─ notifications/            # fixed (when implemented)
+│  └─ …                         # chat, analytics, etc. as needed
+├─ queues/ / workers/
+└─ utils/
+   └─ auth.ts                   # fixed — betterAuth() config
 ```
+
+Only `modules/domain/` (and app-specific columns on `customer` / resource tables) changes between applications. Auth plugins, envelopes, and staff RBAC skeleton are copied as-is.
+
+**Module pattern (fixed):** each feature is typically `routes.ts` + `service.ts`. Services are factory functions with optional dependency injection for tests. Feature groups compose via a barrel (e.g. `customerApp()`).
 
 ---
 
-## 3. Authentication & Authorization
+## 3. Authentication & Authorization (fixed core)
+
+This is the one module every application built on Tenet shares. Do not redesign it per application — extend it by adding columns to the customer profile and entries to the staff permission catalog.
 
 ### 3.1 Shared Auth Transport
 
-All first-party clients authenticate via the shared Better Auth route surface:
+All first-party clients use Better Auth for identity:
 
 ```
 POST   /api/auth/sign-up/email
@@ -117,38 +144,48 @@ GET    /api/auth/get-session
 POST   /api/auth/sign-out
 ```
 
-Role-specific customer and driver records are created outside the auth transport layer.
+The Better Auth handler is mounted on the HTTP app. Role-specific profile records are created **outside** the raw auth transport layer.
 
-**App-level auth wrappers:**
+**Customer app wrappers (fixed paths):**
 
 ```
 POST   /v1/app/customer/auth/sign-up
 POST   /v1/app/customer/auth/login
-POST   /v1/app/driver/auth/sign-up
-POST   /v1/app/driver/auth/login
 ```
+
+Staff authenticate via Better Auth sign-in (invitation / out-of-band user creation). There is no public staff self-registration in the template.
 
 ### 3.2 Better Auth Schema & Principal Types
 
-Better Auth owns four core tables (`user`, `session`, `account`, `verification`). Platform-specific profiles (`customer`, `driver`, `staff`) extend the `user` table via a `userId` foreign key — they are never stored inside Better Auth's own tables.
+Better Auth owns four core tables (`user`, `session`, `account`, `verification`). Platform profiles extend `user` via a `userId` foreign key — they are never stored inside Better Auth’s own tables as nested blobs.
+
+**Fixed principal types on `user`:**
+
+```
+principalType: "customer" | "staff"
+```
+
+Optional on staff users: `staffRole` (coarse label) and/or RBAC via `user_role` → `role` → `permission` (see Section 3.3).
 
 ```mermaid
 classDiagram
     direction TB
 
     class user {
-        <<Better Auth — core>>
+        <<Better Auth — core, fixed>>
         +String id PK
         +String name
         +String email
         +Boolean emailVerified
         +String image?
+        +String principalType
+        +String staffRole?
         +DateTime createdAt
         +DateTime updatedAt
     }
 
     class session {
-        <<Better Auth — core>>
+        <<Better Auth — core, fixed>>
         +String id PK
         +String userId FK
         +String token
@@ -160,38 +197,32 @@ classDiagram
     }
 
     class account {
-        <<Better Auth — core>>
+        <<Better Auth — core, fixed>>
         +String id PK
         +String userId FK
         +String accountId
         +String providerId
-        +String accessToken?
-        +String refreshToken?
-        +DateTime accessTokenExpiresAt?
-        +String scope?
         +String password?
         +DateTime createdAt
         +DateTime updatedAt
     }
 
     class verification {
-        <<Better Auth — core>>
+        <<Better Auth — core, fixed>>
         +String id PK
         +String identifier
         +String value
         +DateTime expiresAt
-        +DateTime createdAt?
-        +DateTime updatedAt?
     }
 
     class customer {
-        <<Platform profile>>
+        <<Platform profile — fixed shape, app extends fields>>
         +String id PK
+        +String publicId
         +String userId FK
         +String fullName
         +String phoneNumber
         +String avatarUrl?
-        +Int totalRides
         +String status
         +Boolean pushEnabled
         +Boolean promotionalEnabled
@@ -199,136 +230,91 @@ classDiagram
         +DateTime registeredAt
     }
 
-    class driver {
-        <<Platform profile>>
-        +String id PK
-        +String userId FK
-        +String fullName
-        +String phoneNumber
-        +String vehicleType
-        +String licenseNumber
-        +Int deliveryCount
-        +Float ratingAverage
-        +String availability
-        +String status
-        +Float currentLat?
-        +Float currentLng?
-        +DateTime locationUpdatedAt?
-    }
-
-    class staff {
-        <<Platform profile>>
-        +String id PK
-        +String userId FK
-        +String fullName
-        +String role
-        +String[] permissions
-        +Boolean isActive
-        +Boolean twoFactorEnabled
-        +DateTime lastLoginAt?
-    }
-
-    user "1" --> "0..*" session      : has sessions
-    user "1" --> "0..*" account      : has accounts
-    user "1" --> "0..1" customer     : profile
-    user "1" --> "0..1" driver       : profile
-    user "1" --> "0..1" staff        : profile
+    user "1" --> "0..*" session    : has sessions
+    user "1" --> "0..*" account    : has accounts
+    user "1" --> "0..1" customer   : profile when customer
 ```
 
-**How it works in practice:**
+**How it works in practice (fixed flow):**
 
-1. Sign-up hits `POST /api/auth/sign-up/email` — Better Auth creates a `user` row and a credential `account` row.
-2. The platform app wrapper (`POST /v1/app/customer/auth/sign-up` or `/v1/app/driver/auth/sign-up`) then creates the corresponding `customer` or `driver` profile row linked via `userId`.
-3. `GET /api/auth/get-session` returns the `session` + `user`. The platform resolves the principal type by joining against `customer`, `driver`, or `staff` on `userId`.
-4. Staff accounts are created out-of-band (invitation-based or super-admin only) — the `staff` profile row is inserted after the `user` row is created.
-5. The `verification` table is used by Better Auth for email verification tokens and password-reset flows.
+1. **Customer sign-up** hits `POST /v1/app/customer/auth/sign-up`. The service forwards to Better Auth `POST /api/auth/sign-up/email` with `principalType: "customer"`, then inserts the `customer` profile row linked via `userId`. On profile failure, clean up the auth user when possible.
+2. **Customer login** hits `POST /v1/app/customer/auth/login`, forwards to Better Auth sign-in, then loads the customer profile by `userId`. Missing profile → deny (403).
+3. Subsequent requests resolve session via Better Auth `getSession` (headers/cookies). The platform attaches `user` + `session` on the request context.
+4. **Customer guard** loads the `customer` row when `principalType === "customer"` and exposes `customerSession: { customerId, userId }`. Protected customer routes require that session (group guard or equivalent).
+5. **Scope macro** requires an authenticated user session, then optionally restricts by `principalType` when a list is provided. Shared uploads require a user session only (not domain guards); any authenticated principal may upload.
+6. **Staff** users are created out-of-band; `principalType` is `staff`. Staff routes use permission macros (Section 3.3), not the customer profile.
+7. The `verification` table is used by Better Auth for email verification and password-reset flows.
 
-### 3.3 Staff Roles & Permissions
+Adding app-specific user fields means adding columns to `customer` (or domain tables), never redesigning Better Auth tables or the flows above.
 
-| Role | Key Permissions |
-|---|---|
-| `admin` | All permissions |
-| `operation` | `rides.read/update/cancel`, `drivers.read/write`, `dashboard.read` |
-| `finance` | `transactions.read`, `payouts.read/write`, `rides.refund` |
-| `support` | `rides.read/update`, `users.read`, `notifications.read/write` |
-| `security` | `security.read/write`, `roles.read/write`, `exports.read/write` |
+**Auth service result shape (fixed pattern):**
 
-**Full permission set:** `dashboard.read` · `rides.read` · `rides.update` · `rides.cancel` · `rides.refund` · `users.read` · `drivers.read` · `drivers.write` · `transactions.read` · `payouts.read` · `payouts.write` · `notifications.read` · `notifications.write` · `settings.read` · `settings.write` · `roles.read` · `roles.write` · `security.read` · `security.write` · `exports.read` · `exports.write`
+```
+{ ok: true, data: T } | { ok: false, error: { status, code, message } }
+```
+
+Routes map that to the HTTP envelope (Section 6) and forward `Set-Cookie` from Better Auth when present.
+
+### 3.3 Staff Roles & Permissions (fixed skeleton, permission set is app-defined)
+
+RBAC tables (fixed skeleton): `permission` (resource + action), `role`, `role_permission`, `user_role`.
+
+| Role (example labels) | Intent                                           |
+| --------------------- | ------------------------------------------------ |
+| `admin`               | All permissions                                  |
+| `operations`          | Resources read/update/cancel, dashboard          |
+| `finance`             | Transactions, refunds                            |
+| `support`             | Resources read/update, users read, notifications |
+
+**Permission catalog pattern (rename the `resources.*` group to the app domain noun):**  
+`dashboard.read` · `resources.read` · `resources.update` · `resources.cancel` · `resources.refund` · `users.read` · `transactions.read` · `notifications.read` · `notifications.write` · `settings.read` · `settings.write` · `roles.read` · `roles.write` · `security.read` · `security.write` · `exports.read` · `exports.write`
+
+Staff route macros (fixed pattern):
+
+- Require authenticated user with `principalType === "staff"`
+- Check `resource` + `action` against RBAC joins
+- Optional in-memory permission cache with invalidation on role changes
 
 ---
 
-## 4. Domain Model (ERD)
+## 4. Domain Module Pattern
+
+Every application built on Tenet defines exactly one primary **Resource** entity — the thing being transacted (an order, a booking, a listing, a job, an appointment…) — plus a small set of satellite entities that are stable across applications.
+
+When instantiating a new app, rename `RESOURCE` to the domain noun and add domain fields; keep satellite entities and relationships as-is unless a satellite is not needed (then omit it).
 
 ```mermaid
 erDiagram
     CUSTOMER {
         string id PK
-        string identity_id FK
+        string user_id FK
         string full_name
         string phone_number
         string avatar_url
-        int total_rides
         string status
         timestamp last_active_at
         timestamp registered_at
     }
 
-    DRIVER {
-        string id PK
-        string identity_id FK
-        string full_name
-        string phone_number
-        string vehicle_type
-        string license_number
-        int delivery_count
-        float rating_average
-        string availability
-        string status
-        float current_lat
-        float current_lng
-        timestamp location_updated_at
-    }
-
-    RIDE {
+    RESOURCE {
         string id PK
         string customer_id FK
-        string driver_id FK
         int subtotal_amount
-        int delivery_fee_amount
-        int service_fee_amount
+        int fee_amount
         int discount_amount
         int total_amount
         string currency
-        string ride_status
-        string delivery_status
+        string resource_status
         string payment_status
         string payment_method
-        float pickup_lat
-        float pickup_lng
-        float dropoff_lat
-        float dropoff_lng
         timestamp placed_at
-        timestamp accepted_at
-        timestamp picked_up_at
-        timestamp delivered_at
-    }
-
-    DELIVERY_TASK {
-        string id PK
-        string ride_id FK
-        string driver_id FK
-        string status
-        float pickup_lat
-        float pickup_lng
-        float dropoff_lat
-        float dropoff_lng
-        int eta_minutes
-        string proof_of_delivery
+        timestamp completed_at
+        timestamp cancelled_at
     }
 
     TRANSACTION {
         string id PK
-        string ride_id FK
+        string resource_id FK
         string type
         string party_type
         string party_id
@@ -340,23 +326,9 @@ erDiagram
         timestamp created_at
     }
 
-    PAYOUT {
-        string id PK
-        string beneficiary_type
-        string beneficiary_id FK
-        string beneficiary_name
-        int amount
-        string currency
-        int eligible_ride_count
-        string status
-        timestamp scheduled_at
-        timestamp paid_at
-        string transaction_id FK
-    }
-
     CONVERSATION {
         string id PK
-        string ride_id FK
+        string resource_id FK
         int unread_count
         timestamp last_message_at
     }
@@ -406,160 +378,93 @@ erDiagram
         timestamp created_at
     }
 
-    CUSTOMER     ||--o{ RIDE            : places
-    DRIVER       ||--o{ RIDE            : fulfils
-    RIDE        ||--o| DELIVERY_TASK    : has
-    DRIVER       ||--o{ DELIVERY_TASK    : executes
-    RIDE        ||--o{ TRANSACTION      : generates
-    DRIVER       ||--o{ PAYOUT           : receives
-    PAYOUT       ||--o| TRANSACTION      : settled_via
-    RIDE        ||--o{ CONVERSATION     : has
-    CONVERSATION ||--o{ MESSAGE          : contains
-    CUSTOMER     ||--o{ PAYMENT_METHOD   : owns
-    CUSTOMER     ||--o{ NOTIFICATION     : receives
-    DRIVER       ||--o{ NOTIFICATION     : receives
+    CUSTOMER    ||--o{ RESOURCE       : initiates
+    RESOURCE    ||--o{ TRANSACTION    : generates
+    RESOURCE    ||--o{ CONVERSATION   : has
+    CONVERSATION||--o{ MESSAGE        : contains
+    CUSTOMER    ||--o{ PAYMENT_METHOD : owns
+    CUSTOMER    ||--o{ NOTIFICATION   : receives
 ```
+
+**What's fixed vs. app-specific:**
+
+| Entity                                                                   | Status when instantiating a new app                                       |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `CUSTOMER`, staff access via `user` + RBAC                               | Fixed shape (Section 3); add app-specific columns on `customer` only      |
+| `RESOURCE`                                                               | App-specific — rename and shape domain fields (geo, scheduling, catalog…) |
+| `TRANSACTION`                                                            | Fixed shape; omit if the app has no payments                              |
+| `CONVERSATION`, `MESSAGE`, `NOTIFICATION`, `PAYMENT_METHOD`, `AUDIT_LOG` | Fixed pattern; omit modules not needed for the product                    |
+
+Domain business logic lives in `modules/domain/` (and customer-facing services that call into it), **never** only inside thin route handlers.
 
 ---
 
-## 5. State Machines
+## 5. State Machine Pattern
 
-### 5.1 Ride Lifecycle
+Two state machines recur across applications. The **shapes** below are fixed; the **resource state names** are renamed per domain when instantiating.
 
-```mermaid
-stateDiagram-v2
-    [*] --> new : POST /rides (customer places ride request)
-
-    new --> accepted       : driver or admin accepts
-    new --> cancelled      : customer or admin cancels
-
-    accepted --> ready_for_pickup  : preparation complete
-    accepted --> cancelled         : cancelled before pickup
-
-    ready_for_pickup --> driver_assigned : driver auto-assigned or admin assigns
-    ready_for_pickup --> cancelled       : no driver available
-
-    driver_assigned --> picked_up : driver arrives & loads
-    driver_assigned --> cancelled : driver rejects / timeout
-
-    picked_up --> in_transit : driver departs origin
-
-    in_transit --> delivered       : driver confirms delivery
-    in_transit --> failed_delivery : delivery attempt fails
-    in_transit --> cancelled       : emergency cancellation
-
-    failed_delivery --> returned : goods returned to origin
-    failed_delivery --> cancelled
-
-    delivered --> [*]
-    returned  --> [*]
-    cancelled --> [*]
-
-    note right of driver_assigned
-        Triggers realtime event:
-        ride.assigned_driver
-    end note
-
-    note right of in_transit
-        Triggers realtime event:
-        driver.location_updated
-        delivery.eta_updated
-    end note
-```
-
-### 5.2 Driver Task Lifecycle
+### 5.1 Resource Lifecycle (app-specific state names)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> offered : auto-assign job or admin assigns
-
-    offered --> accepted  : driver accepts (POST /tasks/{id}/accept)
-    offered --> cancelled : driver rejects or task expires
-
-    accepted --> en_route_to_pickup : driver starts navigation
-
-    en_route_to_pickup --> arrived_at_pickup : POST /tasks/{id}/arrived-pickup
-
-    arrived_at_pickup --> picked_up : POST /tasks/{id}/picked-up
-
-    picked_up --> en_route_to_dropoff : driver departs
-
-    en_route_to_dropoff --> arrived_at_dropoff : POST /tasks/{id}/arrived-dropoff
-
-    arrived_at_dropoff --> delivered : POST /tasks/{id}/delivered
-    arrived_at_dropoff --> failed    : POST /tasks/{id}/failed-delivery
-
-    delivered --> [*]
-    failed    --> [*]
+    [*] --> new : customer creates resource
+    new --> accepted : staff or system accepts
+    new --> cancelled : customer or staff cancels
+    accepted --> in_progress : work begins
+    accepted --> cancelled : cancelled before start
+    in_progress --> completed : work confirmed
+    in_progress --> failed : attempt fails
+    in_progress --> cancelled : emergency cancellation
+    failed --> cancelled
+    completed --> [*]
     cancelled --> [*]
 ```
 
-### 5.3 Payment Status
+### 5.2 Payment Status (fixed, reused verbatim when payments exist)
 
 ```mermaid
 stateDiagram-v2
     [*] --> pending
-
-    pending --> authorized         : payment gateway authorises
-    pending --> failed             : authorisation fails
-
-    authorized --> paid            : capture succeeds
-    authorized --> failed          : capture fails
-
-    paid --> refunded              : full refund issued
-    paid --> partially_refunded    : partial refund issued
-
-    refunded          --> [*]
+    pending --> authorized : payment gateway authorises
+    pending --> failed : authorisation fails
+    authorized --> paid : capture succeeds
+    authorized --> failed : capture fails
+    paid --> refunded : full refund issued
+    paid --> partially_refunded : partial refund issued
+    refunded --> [*]
     partially_refunded --> [*]
-    failed             --> [*]
-```
-
-### 5.4 Payout Status
-
-```mermaid
-stateDiagram-v2
-    [*] --> pending
-
-    pending --> scheduled  : payout job picks up
-    scheduled --> approved : finance approves (or auto-approve)
-    approved --> processing : disbursement initiated
-    processing --> paid     : bank/mobile money confirms
-    processing --> failed   : disbursement fails
-
-    paid      --> [*]
-    failed    --> [*]
-    cancelled --> [*]
-
-    pending   --> cancelled : manually cancelled
-    scheduled --> cancelled
-    approved  --> cancelled
+    failed --> [*]
 ```
 
 ---
 
 ## 6. API Conventions
 
-### 6.1 Response Envelope
-
-All endpoints return the same envelope:
+### 6.1 Response Envelope (fixed)
 
 ```json
 {
-  "data":  {},
-  "meta":  {},
+  "data": {},
+  "meta": {
+    "requestId": "uuid",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
   "error": null
 }
 ```
 
-**Paginated response:**
+**Paginated list payload (inside `data` or as documented per route):**
 
 ```json
 {
-  "data": [],
-  "meta": {
+  "data": {
+    "items": [],
     "nextCursor": "cur_abc123",
-    "hasMore": true,
-    "total": 193
+    "hasMore": true
+  },
+  "meta": {
+    "requestId": "uuid",
+    "timestamp": "2026-01-01T00:00:00.000Z"
   },
   "error": null
 }
@@ -570,46 +475,49 @@ All endpoints return the same envelope:
 ```json
 {
   "data": null,
-  "meta": { "requestId": "req_01JXYZ" },
+  "meta": {
+    "requestId": "uuid",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "One or more fields are invalid.",
-    "details": [
-      { "field": "pickup.latitude", "message": "Required." }
-    ]
+    "details": [{ "field": "example.field", "message": "Required." }]
   }
 }
 ```
 
-### 6.2 Common Query Parameters
+Helpers (fixed pattern): `ok(data)` and `fail(code, message, details?)`.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `q` | string | Free-text search |
-| `status` | string | Filter by status enum |
-| `type` | string | Filter by type enum |
-| `dateFrom` | ISO 8601 | Start date filter |
-| `dateTo` | ISO 8601 | End date filter |
-| `cursor` | string | Pagination cursor |
-| `limit` | integer | Page size |
-| `sortBy` | string | Field to sort by |
-| `sortOrder` | `asc` \| `desc` | Sort direction |
+### 6.2 Common Query Parameters (fixed)
 
-### 6.3 Route Surface Architecture
+| Parameter   | Type            | Description           |
+| ----------- | --------------- | --------------------- |
+| `q`         | string          | Free-text search      |
+| `status`    | string          | Filter by status enum |
+| `type`      | string          | Filter by type enum   |
+| `dateFrom`  | ISO 8601        | Start date filter     |
+| `dateTo`    | ISO 8601        | End date filter       |
+| `cursor`    | string          | Pagination cursor     |
+| `limit`     | integer         | Page size             |
+| `sortBy`    | string          | Field to sort by      |
+| `sortOrder` | `asc` \| `desc` | Sort direction        |
+
+---
+
+## 7. Route Surface Architecture
 
 ```mermaid
 graph TD
     subgraph Clients
         CA[Customer App]
-        DA[Driver App]
         AD[Admin Dashboard]
         WK[Internal Workers]
     end
 
     subgraph App Surface
         ACS[/v1/app/customer/*]
-        ADS[/v1/app/driver/*]
-        ASS[/v1/app/shared/*]
+        ASS[/v1/app/shared/* and /v1/app/uploads/*]
         AUTH[/api/auth/*]
     end
 
@@ -631,15 +539,11 @@ graph TD
     CA --> ACS
     CA --> ASS
     CA --> AUTH
-    DA --> ADS
-    DA --> ASS
-    DA --> AUTH
     AD --> ADM
     AD --> AUTH
     WK --> INT
 
     ACS --> BL
-    ADS --> BL
     ASS --> BL
     ADM --> BL
     INT --> BL
@@ -649,344 +553,181 @@ graph TD
     BL --> S3
 ```
 
----
-
-## 7. App API — Customer Surface
-
-### 7.1 Shared Auth
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/auth/sign-up/email` | Shared identity sign-up |
-| `POST` | `/api/auth/sign-in/email` | Shared identity sign-in |
-| `GET` | `/api/auth/get-session` | Get current session |
-| `POST` | `/api/auth/sign-out` | Invalidate session |
-| `POST` | `/v1/app/customer/auth/sign-up` | Create customer profile |
-| `POST` | `/v1/app/customer/auth/login` | Customer app login wrapper |
-
-**POST `/v1/app/customer/auth/sign-up` body:**
-
-```json
-{
-  "email": "jackiejohn@gmail.com",
-  "password": "••••••••",
-  "fullName": "Jackie John",
-  "phoneNumber": "+255678674667"
-}
-```
-
-### 7.2 Customer Profile
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/customer/me` | Get authenticated customer profile |
-| `PATCH` | `/v1/app/customer/me` | Update profile fields |
-| `POST` | `/v1/app/customer/me/avatar` | Upload avatar (use presign flow) |
-| `GET` | `/v1/app/customer/me/preferences` | Get notification preferences |
-| `PATCH` | `/v1/app/customer/me/preferences` | Update preferences |
-
-**Customer model:**
-
-```json
-{
-  "id": "usr_0238",
-  "fullName": "Jackie John",
-  "email": "jackiejohn@gmail.com",
-  "phoneNumber": "+255678674667",
-  "avatarUrl": "https://cdn.move.app/users/usr_0238.jpg",
-  "totalRides": 3,
-  "lastActiveAt": "2026-03-17T08:22:00Z",
-  "registeredAt": "2026-03-17T08:22:00Z",
-  "status": "active",
-  "notificationPreferences": {
-    "pushEnabled": true,
-    "promotionalEnabled": false
-  }
-}
-```
-
-### 7.3 Rides (Ride Requests)
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/app/customer/rides` | Place a relocation request |
-| `GET` | `/v1/app/customer/rides` | List customer rides |
-| `GET` | `/v1/app/customer/rides/{rideId}` | Get single ride |
-| `POST` | `/v1/app/customer/rides/{rideId}/cancel` | Cancel a ride |
-| `POST` | `/v1/app/customer/rides/{rideId}/repeat` | Re-place identical ride |
-| `GET` | `/v1/app/customer/rides/{rideId}/tracking` | Live driver location & ETA |
-| `GET` | `/v1/app/customer/rides/{rideId}/receipt` | Download receipt |
-
-**POST `/v1/app/customer/rides` body:**
-
-```json
-{
-  "pickup": {
-    "latitude": -6.7727,
-    "longitude": 39.2608,
-    "label": "Kariakoo Market"
-  },
-  "dropoff": {
-    "latitude": -6.7489,
-    "longitude": 39.2768,
-    "label": "Masaki Peninsula"
-  },
-  "paymentMethodId": "pm_001",
-  "notes": "Fragile items — please handle carefully"
-}
-```
-
-**Ride model:**
-
-```json
-{
-  "id": "ride_2189",
-  "customerId": "usr_0238",
-  "driverId": "drv_1024",
-  "subtotalAmount": 800000,
-  "deliveryFeeAmount": 150000,
-  "serviceFeeAmount": 50000,
-  "discountAmount": 0,
-  "totalAmount": 1000000,
-  "currency": "TZS",
-  "rideStatus": "in_transit",
-  "deliveryStatus": "on_route",
-  "paymentStatus": "paid",
-  "paymentMethod": "mobile_money",
-  "pickup": { "latitude": -6.7727, "longitude": 39.2608, "label": "Kariakoo Market" },
-  "dropoff": { "latitude": -6.7489, "longitude": 39.2768, "label": "Masaki Peninsula" },
-  "placedAt": "2026-03-17T05:22:00Z",
-  "acceptedAt": "2026-03-17T05:25:00Z",
-  "pickedUpAt": "2026-03-17T05:45:00Z",
-  "deliveredAt": null
-}
-```
-
-**GET `/v1/app/customer/rides/{rideId}/tracking` response:**
-
-```json
-{
-  "data": {
-    "driverLocation": { "latitude": -6.7601, "longitude": 39.2690 },
-    "etaMinutes": 12,
-    "deliveryStatus": "on_route",
-    "taskStatus": "en_route_to_dropoff"
-  }
-}
-```
-
-### 7.4 Payment Methods
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/customer/payment-methods` | List saved methods |
-| `POST` | `/v1/app/customer/payment-methods` | Add a payment method |
-| `PATCH` | `/v1/app/customer/payment-methods/{paymentMethodId}` | Update method |
-| `DELETE` | `/v1/app/customer/payment-methods/{paymentMethodId}` | Remove method |
-| `POST` | `/v1/app/customer/payment-methods/{paymentMethodId}/default` | Set as default |
-| `GET` | `/v1/app/customer/payments/{paymentId}` | Get payment status |
-| `POST` | `/v1/app/customer/payments/{paymentId}/confirm` | Confirm pending payment |
-| `POST` | `/v1/app/customer/payments/{paymentId}/retry` | Retry failed payment |
-
-### 7.5 Shared App Services
-
-#### Uploads
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/app/uploads/presign` | Get presigned S3 upload URL |
-| `POST` | `/v1/app/uploads/complete` | Confirm upload finalised |
-
-**POST `/v1/app/uploads/presign` body:**
-
-```json
-{
-  "assetType": "avatar",
-  "mimeType": "image/jpeg",
-  "size": 204800
-}
-```
-
-#### Notifications
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/shared/notifications` | List notifications (cursor paginated) |
-| `POST` | `/v1/app/shared/notifications/{notificationId}/read` | Mark one as read |
-| `POST` | `/v1/app/shared/notifications/read-all` | Mark all as read |
-| `GET` | `/v1/app/shared/notification-preferences` | Get preferences |
-| `PATCH` | `/v1/app/shared/notification-preferences` | Update preferences |
-
-#### Conversations
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/shared/conversations` | List conversations |
-| `POST` | `/v1/app/shared/conversations` | Open a conversation |
-| `GET` | `/v1/app/shared/conversations/{conversationId}` | Get conversation |
-| `GET` | `/v1/app/shared/conversations/{conversationId}/messages` | Paginated messages |
-| `POST` | `/v1/app/shared/conversations/{conversationId}/messages` | Send message |
-| `POST` | `/v1/app/shared/conversations/{conversationId}/attachments` | Attach file |
-| `POST` | `/v1/app/shared/conversations/{conversationId}/read` | Mark as read |
-
-**Conversation model:**
-
-```json
-{
-  "id": "cnv_123",
-  "rideId": "ride_2189",
-  "participants": [
-    { "userId": "usr_0238", "role": "customer", "name": "Jackie John" },
-    { "userId": "drv_1024", "role": "driver",   "name": "John Peter" }
-  ],
-  "lastMessage": {
-    "id": "msg_1",
-    "body": "I am 5 minutes away.",
-    "sentAt": "2026-04-05T08:05:00Z"
-  },
-  "unreadCount": 1
-}
-```
+There is **no global “must be logged in” middleware** on the entire app. Each route group attaches auth plugins and guards explicitly.
 
 ---
 
-## 8. App API — Driver Surface
+## 8. App API — Customer Surface (template)
+
+Route shapes below are fixed; only `resources` (rename to the domain noun) and its body fields change per app.
 
 ### 8.1 Auth
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/app/driver/auth/sign-up` | Register driver account |
-| `POST` | `/v1/app/driver/auth/login` | Driver app login |
+| Method | Path                            | Description             |
+| ------ | ------------------------------- | ----------------------- |
+| `POST` | `/api/auth/sign-up/email`       | Shared identity sign-up |
+| `POST` | `/api/auth/sign-in/email`       | Shared identity sign-in |
+| `GET`  | `/api/auth/get-session`         | Get current session     |
+| `POST` | `/api/auth/sign-out`            | Invalidate session      |
+| `POST` | `/v1/app/customer/auth/sign-up` | Create customer profile |
+| `POST` | `/v1/app/customer/auth/login`   | Customer app login      |
 
-**POST `/v1/app/driver/auth/sign-up` body:**
+### 8.2 Customer Profile
+
+Protected with customer guard (e.g. group-level `customerOnly`).
+
+| Method  | Path                       | Description               |
+| ------- | -------------------------- | ------------------------- |
+| `GET`   | `/v1/app/customer/profile` | Get authenticated profile |
+| `PUT`   | `/v1/app/customer/profile` | Update profile fields     |
+| `PATCH` | `/v1/app/customer/profile` | Partial update (optional) |
+
+Session identity for handlers is **`customerId`** (domain id), not only the Better Auth user id.
+
+### 8.3 Resources (rename per app)
+
+| Method | Path                                      | Description                |
+| ------ | ----------------------------------------- | -------------------------- |
+| `POST` | `/v1/app/customer/resources`              | Create a resource          |
+| `GET`  | `/v1/app/customer/resources`              | List own resources         |
+| `GET`  | `/v1/app/customer/resources/{id}`         | Get single resource        |
+| `POST` | `/v1/app/customer/resources/{id}/cancel`  | Cancel a resource          |
+| `GET`  | `/v1/app/customer/resources/{id}/receipt` | Download receipt (if paid) |
+
+### 8.4 Payment Methods (fixed when payments exist)
+
+| Method   | Path                                            | Description             |
+| -------- | ----------------------------------------------- | ----------------------- |
+| `GET`    | `/v1/app/customer/payment-methods`              | List saved methods      |
+| `POST`   | `/v1/app/customer/payment-methods`              | Add a payment method    |
+| `PATCH`  | `/v1/app/customer/payment-methods/{id}`         | Update method           |
+| `DELETE` | `/v1/app/customer/payment-methods/{id}`         | Remove method           |
+| `POST`   | `/v1/app/customer/payment-methods/{id}/default` | Set as default          |
+| `GET`    | `/v1/app/customer/payments/{paymentId}`         | Get payment status      |
+| `POST`   | `/v1/app/customer/payments/{paymentId}/confirm` | Confirm pending payment |
+| `POST`   | `/v1/app/customer/payments/{paymentId}/retry`   | Retry failed payment    |
+
+### 8.5 Uploads (fixed shared module)
+
+Uploads are a **fixed platform module** shared by every authenticated principal. They are **not** domain-scoped and **not** protected by customer/staff guards.
+
+**Auth (fixed):**
+
+- Plugin: session derive from Better Auth (`authPlugin`)
+- Requires a logged-in **user session** (Better Auth `user` + `session`) — not a domain guard (`customerSession`, etc.)
+- Any authenticated principal may use the module; do not gate on a single principal type
+- Owner key: `asset.ownerId` = `user.id` (Better Auth user id), never a domain profile id
+
+**Flow (fixed):**
+
+```
+Client  → POST /v1/app/uploads/presign
+        ← { uploadUrl, fileKey, assetId, publicUrl }
+Client  → PUT uploadUrl  (direct to raw object storage)
+Client  → POST /v1/app/uploads/complete  { assetId, fileKey }
+        ← { assetId, status, storageUrl, mimeType }
+Worker  → process raw object → write public object → status ready | failed
+Client  → GET /v1/app/uploads/{assetId}  (poll until ready/failed)
+```
+
+**Endpoints:**
+
+| Method | Path                        | Description                                      |
+| ------ | --------------------------- | ------------------------------------------------ |
+| `POST` | `/v1/app/uploads/presign`   | Validate input, create asset row, return presign |
+| `POST` | `/v1/app/uploads/complete`  | Mark uploaded, enqueue processing job            |
+| `GET`  | `/v1/app/uploads/{assetId}` | Get asset status (owner-scoped)                  |
+
+**POST `/presign` body:**
 
 ```json
 {
-  "email": "johnpeter@example.com",
-  "password": "••••••••",
-  "fullName": "John Peter",
-  "phoneNumber": "+255718920441",
-  "vehicleType": "Canter",
-  "licenseNumber": "DRV-100200"
+  "mimeType": "image/png",
+  "assetType": "avatar",
+  "size": 102400
 }
 ```
 
-### 8.2 Driver Profile & Documents
+| Field       | Required | Notes                                                                |
+| ----------- | -------- | -------------------------------------------------------------------- |
+| `mimeType`  | yes      | Allowlist (images + PDF in the reference implementation)             |
+| `assetType` | no       | App-defined enum values (e.g. `avatar`, `document`); default per app |
+| `size`      | no       | Bytes; rejected if over max (reference: 5MB)                         |
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/driver/me` | Get driver profile |
-| `PATCH` | `/v1/app/driver/me` | Update profile |
-| `POST` | `/v1/app/driver/documents` | Upload document |
-| `GET` | `/v1/app/driver/documents` | List documents & approval status |
-
-**Driver model:**
+**POST `/presign` data:**
 
 ```json
 {
-  "id": "drv_1024",
-  "fullName": "John Peter",
-  "phoneNumber": "+255718920441",
-  "avatarUrl": "https://cdn.move.app/drivers/drv_1024.jpg",
-  "vehicleType": "Canter",
-  "licenseNumber": "DRV-100200",
-  "deliveryCount": 124,
-  "ratingAverage": 5.0,
-  "availability": "online",
-  "status": "active",
-  "currentLocation": {
-    "lat": -6.7731,
-    "lng": 39.2404,
-    "updatedAt": "2026-04-04T08:00:00Z"
-  }
+  "uploadUrl": "https://…",
+  "fileKey": "images/avatar/…",
+  "assetId": "uuid",
+  "publicUrl": "https://cdn…/assets/{assetId}.webp"
 }
 ```
 
-### 8.3 Availability & Location
+**POST `/complete` body:** `{ "assetId": "uuid", "fileKey": "…" }`  
+**GET `/{assetId}` data:** `{ assetId, status, storageUrl, mimeType, assetType }`
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/app/driver/availability` | Toggle `online` / `offline` |
-| `POST` | `/v1/app/driver/location` | Push GPS coordinates (heartbeat) |
+**Asset status machine (fixed):**
 
-**POST `/v1/app/driver/location` body:**
-
-```json
-{
-  "latitude": -6.7731,
-  "longitude": 39.2404,
-  "heading": 270,
-  "speed": 40
-}
+```
+uploading → uploaded → processing → ready
+                                 ↘ failed
 ```
 
-> Triggers the `driver.location_updated` realtime event, consumed by the customer tracking view and admin dashboard.
+- `complete` is idempotent if status is already `uploaded` | `processing` | `ready` | `failed`
+- Only the owning user may complete or read an asset
 
-### 8.4 Delivery Tasks
+**Storage (fixed pattern):**
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/driver/tasks` | List tasks (offered, active, history) |
-| `GET` | `/v1/app/driver/tasks/{taskId}` | Get task detail |
-| `POST` | `/v1/app/driver/tasks/{taskId}/accept` | Accept offered task |
-| `POST` | `/v1/app/driver/tasks/{taskId}/reject` | Reject offered task |
-| `POST` | `/v1/app/driver/tasks/{taskId}/arrived-pickup` | Signal arrival at pickup |
-| `POST` | `/v1/app/driver/tasks/{taskId}/picked-up` | Confirm items loaded |
-| `POST` | `/v1/app/driver/tasks/{taskId}/arrived-dropoff` | Signal arrival at destination |
-| `POST` | `/v1/app/driver/tasks/{taskId}/delivered` | Complete delivery |
-| `POST` | `/v1/app/driver/tasks/{taskId}/failed-delivery` | Report failed delivery |
-| `GET` | `/v1/app/driver/tasks/{taskId}/navigation` | Get turn-by-turn route |
-| `POST` | `/v1/app/driver/tasks/{taskId}/contact-customer` | Open conversation with customer |
+| Concern       | Pattern                                           |
+| ------------- | ------------------------------------------------- |
+| Raw bucket    | Client PUTs with presigned URL; temporary object  |
+| Public bucket | Worker writes final object; CDN/public URL        |
+| Images        | Transcode to a stable public format (e.g. webp)   |
+| PDF / docs    | Copy as-is to public bucket                       |
+| Cleanup       | Delete raw key after success or permanent failure |
 
-**DeliveryTask model:**
+**Worker job (fixed contract):**
 
-```json
-{
-  "id": "dlv_123",
-  "rideId": "ride_2189",
-  "driverId": "drv_1024",
-  "status": "en_route_to_dropoff",
-  "pickup": {
-    "latitude": -6.7727,
-    "longitude": 39.2608,
-    "label": "Kariakoo Market"
-  },
-  "dropoff": {
-    "customerId": "usr_0238",
-    "name": "Jackie John",
-    "latitude": -6.7489,
-    "longitude": 39.2768,
-    "label": "Masaki Peninsula"
-  },
-  "etaMinutes": 12,
-  "proofOfDelivery": null
-}
-```
+| Field      | Description                                         |
+| ---------- | --------------------------------------------------- |
+| Queue name | upload queue                                        |
+| Job name   | `processUpload`                                     |
+| Payload    | `{ assetId, fileKey, mimeType }`                    |
+| Job id     | `assetId` (dedupe)                                  |
+| Retries    | exponential backoff; permanent errors mark `failed` |
 
-**POST `/v1/app/driver/tasks/{taskId}/delivered` body:**
+**App extension (allowed without redesigning the module):**
 
-```json
-{
-  "proofOfDelivery": "uploads/pod/dlv_123_proof.jpg"
-}
-```
+- Add values to the `asset_type` enum for domain needs
+- Tighten MIME allowlist or max size via config
+- Domain modules store `assetId` / `storageUrl` on their own rows after `ready`
 
-### 8.5 Earnings
+**Not part of this module:** linking assets to RESOURCE, multi-part large-file protocol, or principal-specific upload paths.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/app/driver/earnings/summary` | Totals, pending payout, period breakdown |
-| `GET` | `/v1/app/driver/earnings/history` | Per-ride earnings list |
-| `GET` | `/v1/app/driver/payouts` | Payout history & statuses |
+### 8.6 Shared notifications & conversations (fixed when implemented)
+
+Authenticated via session; principal filters optional per product. Prefer the same session-based pattern as uploads when the feature is truly shared.
+
+| Method | Path                                            | Description         |
+| ------ | ----------------------------------------------- | ------------------- |
+| `GET`  | `/v1/app/shared/notifications`                  | List notifications  |
+| `POST` | `/v1/app/shared/notifications/{id}/read`        | Mark one as read    |
+| `POST` | `/v1/app/shared/notifications/read-all`         | Mark all as read    |
+| `GET`  | `/v1/app/shared/conversations`                  | List conversations  |
+| `POST` | `/v1/app/shared/conversations`                  | Open a conversation |
+| `GET`  | `/v1/app/shared/conversations/{id}`             | Get conversation    |
+| `GET`  | `/v1/app/shared/conversations/{id}/messages`    | Paginated messages  |
+| `POST` | `/v1/app/shared/conversations/{id}/messages`    | Send message        |
+| `POST` | `/v1/app/shared/conversations/{id}/attachments` | Attach file         |
+| `POST` | `/v1/app/shared/conversations/{id}/read`        | Mark as read        |
 
 ---
 
-## 9. Admin API
+## 9. Admin API (template)
 
-### 9.1 Authentication
-
-Admin authentication uses the shared Better Auth transport. Admin onboarding should be invitation-based or restricted to super-admin creation. RBAC is enforced after session resolution.
+### 9.1 Authentication (fixed)
 
 ```
 POST   /api/auth/sign-in/email
@@ -994,367 +735,170 @@ GET    /api/auth/get-session
 POST   /api/auth/sign-out
 ```
 
-### 9.2 Dashboard
+All `/v1/admin/*` routes require `principalType === "staff"` and the relevant permission.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/dashboard/overview` | Summary metrics, trends, recent rides |
+### 9.2 Dashboard (fixed shape)
 
-**Query parameters:** `period=month\|week\|day`, `year`
+| Method | Path                           | Description                               |
+| ------ | ------------------------------ | ----------------------------------------- |
+| `GET`  | `/v1/admin/dashboard/overview` | Summary metrics, trends, recent resources |
 
-**Response includes:**
-- Metric cards (total rides, revenue, active drivers, active customers)
-- User segment distribution
-- Revenue vs target trend
-- User activity trend
-- Recent rides summary
+**Query parameters:** `period=month|week|day`, `year`
 
-### 9.3 Rides
+### 9.3 Resources (rename per app)
 
-#### Enums
+| Method  | Path                              | Description                       |
+| ------- | --------------------------------- | --------------------------------- |
+| `GET`   | `/v1/admin/resources`             | List all resources                |
+| `GET`   | `/v1/admin/resources/summary`     | Count & amount per status bucket  |
+| `GET`   | `/v1/admin/resources/{id}`        | Full resource detail              |
+| `PATCH` | `/v1/admin/resources/{id}`        | Update resource fields            |
+| `POST`  | `/v1/admin/resources/{id}/cancel` | Cancel resource                   |
+| `POST`  | `/v1/admin/resources/{id}/refund` | Initiate refund                   |
+| `POST`  | `/v1/admin/resources/bulk`        | Bulk action on multiple resources |
 
-**`rideStatus`:** `in_progress` · `completed` · `refunded` · `canceled`
+Allowed bulk actions (template): `cancel` · `mark_completed` · `request_refund` · `export`
 
-**`deliveryStatus`:** `in_checking` · `picked` · `on_route` · `canceled` · `none`
+### 9.4 Customers (fixed pattern)
 
-#### Endpoints
+| Method  | Path                              | Description         |
+| ------- | --------------------------------- | ------------------- |
+| `GET`   | `/v1/admin/customers`             | List customers      |
+| `GET`   | `/v1/admin/customers/{id}`        | Profile + activity  |
+| `PATCH` | `/v1/admin/customers/{id}`        | Update record       |
+| `POST`  | `/v1/admin/customers/{id}/status` | Activate or suspend |
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/rides` | List all rides |
-| `GET` | `/v1/admin/rides/summary` | Count & amount per status bucket |
-| `GET` | `/v1/admin/rides/{rideId}` | Full ride detail |
-| `PATCH` | `/v1/admin/rides/{rideId}` | Update ride fields |
-| `POST` | `/v1/admin/rides/{rideId}/assign-driver` | Manually assign a driver |
-| `POST` | `/v1/admin/rides/{rideId}/refund` | Initiate refund |
-| `POST` | `/v1/admin/rides/bulk` | Bulk action on multiple rides |
+### 9.5 Transactions (fixed when payments exist)
 
-**GET `/v1/admin/rides` query parameters:**
+| Method | Path                                | Description                  |
+| ------ | ----------------------------------- | ---------------------------- |
+| `GET`  | `/v1/admin/transactions/metrics`    | Volume, success rate, totals |
+| `GET`  | `/v1/admin/transactions`            | List transactions            |
+| `GET`  | `/v1/admin/transactions/{id}`       | Transaction detail           |
+| `POST` | `/v1/admin/transactions/{id}/retry` | Retry failed transaction     |
 
-| Parameter | Type |
-|---|---|
-| `q` | string |
-| `rideStatus` | enum |
-| `deliveryStatus` | enum |
-| `driverId` | string |
-| `customerId` | string |
-| `dateFrom` | ISO 8601 |
-| `dateTo` | ISO 8601 |
-| `cursor` | string |
-| `limit` | integer |
-| `sortBy` | string |
-| `sortOrder` | `asc` \| `desc` |
+### 9.6 Admin Notifications (fixed)
 
-**POST `/v1/admin/rides/{rideId}/assign-driver` body:**
-
-```json
-{ "driverId": "drv_1024" }
-```
-
-**POST `/v1/admin/rides/bulk` body:**
-
-```json
-{
-  "rideIds": ["ride_001", "ride_002"],
-  "action": "cancel"
-}
-```
-
-Allowed actions: `cancel` · `mark_completed` · `assign_driver` · `request_refund` · `export`
-
-### 9.4 Drivers
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/drivers/metrics` | Total / active / online counts |
-| `GET` | `/v1/admin/drivers` | List drivers |
-| `GET` | `/v1/admin/drivers/{driverId}` | Driver profile + stats |
-| `PATCH` | `/v1/admin/drivers/{driverId}` | Update driver record |
-| `POST` | `/v1/admin/drivers/{driverId}/status` | Activate or suspend |
-| `GET` | `/v1/admin/drivers/{driverId}/deliveries` | Delivery history |
-
-**POST `/v1/admin/drivers/{driverId}/status` body:**
-
-```json
-{
-  "status": "suspended",
-  "reason": "Document verification failed"
-}
-```
-
-### 9.5 Transactions
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/transactions/metrics` | Volume, success rate, totals |
-| `GET` | `/v1/admin/transactions` | List transactions |
-| `GET` | `/v1/admin/transactions/{transactionId}` | Transaction detail |
-| `POST` | `/v1/admin/transactions/{transactionId}/retry` | Retry failed transaction |
-
-**Transaction model:**
-
-```json
-{
-  "id": "txn_1046",
-  "rideId": "ride_2002",
-  "type": "payout",
-  "partyType": "driver",
-  "partyId": "drv_1024",
-  "amount": 125000000,
-  "currency": "TZS",
-  "method": "bank",
-  "status": "completed",
-  "reference": "bank_trf_333",
-  "createdAt": "2026-02-12T10:00:00Z"
-}
-```
-
-### 9.6 Payouts
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/payouts/metrics` | Volume and pending amounts |
-| `GET` | `/v1/admin/payouts` | List payouts |
-| `GET` | `/v1/admin/payouts/{payoutId}` | Payout detail |
-| `POST` | `/v1/admin/payouts/{payoutId}/pay` | Execute single payout |
-| `GET` | `/v1/admin/payouts/{payoutId}/transactions` | Linked transactions |
-| `POST` | `/v1/admin/payouts/batches` | Create a batch payout run |
-| `POST` | `/v1/admin/payouts/batches/{batchId}/approve` | Approve and execute batch |
-
-**Payout model:**
-
-```json
-{
-  "publicId": "PAYOUT-1001",
-  "beneficiaryType": "driver",
-  "beneficiaryId": "drv_1024",
-  "beneficiaryName": "John Peter",
-  "amount": 12000000,
-  "currency": "TZS",
-  "eligibleRideCount": 15,
-  "status": "paid",
-  "scheduledAt": "2026-02-12T00:00:00Z",
-  "paidAt": "2026-02-12T11:00:00Z",
-  "transactionId": "txn_1046"
-}
-```
-
-### 9.7 Admin Notifications
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/admin/notifications` | List admin notifications |
-| `GET` | `/v1/admin/notifications/summary` | Unread count by type |
-| `POST` | `/v1/admin/notifications/{notificationId}/read` | Mark one as read |
-| `POST` | `/v1/admin/notifications/read-all` | Mark all as read |
+| Method | Path                                | Description              |
+| ------ | ----------------------------------- | ------------------------ |
+| `GET`  | `/v1/admin/notifications`           | List admin notifications |
+| `GET`  | `/v1/admin/notifications/summary`   | Unread count by type     |
+| `POST` | `/v1/admin/notifications/{id}/read` | Mark one as read         |
+| `POST` | `/v1/admin/notifications/read-all`  | Mark all as read         |
 
 ---
 
-## 10. Internal API
+## 10. Internal API (template)
 
-Used for webhooks, background jobs, and trusted service-to-service operations. Secured with service credentials — not exposed to any first-party client app.
+Used for webhooks, background jobs, and trusted service-to-service operations. Secured with service credentials — never exposed to a first-party client app.
 
 ### 10.1 Payment Webhooks
 
-| Method | Path | Description |
-|---|---|---|
+| Method | Path                                          | Description                    |
+| ------ | --------------------------------------------- | ------------------------------ |
 | `POST` | `/v1/internal/payments/webhooks/mobile-money` | Mobile money provider callback |
-| `POST` | `/v1/internal/payments/webhooks/bank` | Bank transfer callback |
-| `POST` | `/v1/internal/payments/webhooks/card` | Card payment callback |
+| `POST` | `/v1/internal/payments/webhooks/bank`         | Bank transfer callback         |
+| `POST` | `/v1/internal/payments/webhooks/card`         | Card payment callback          |
 
-> All webhook endpoints verify an HMAC signature from the provider shared secret before processing.
+> Webhook endpoints verify an HMAC signature from the provider shared secret before processing.
 
 ### 10.2 Background Job Triggers
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/internal/jobs/payouts/run` | Trigger payout execution job |
-| `POST` | `/v1/internal/jobs/exports/run` | Trigger data export generation |
-| `POST` | `/v1/internal/jobs/reconciliation/run` | Trigger reconciliation sweep |
+| Method | Path                                     | Description                  |
+| ------ | ---------------------------------------- | ---------------------------- |
+| `POST` | `/v1/internal/jobs/exports/run`          | Trigger data export          |
+| `POST` | `/v1/internal/jobs/reconciliation/run`   | Trigger reconciliation sweep |
 | `POST` | `/v1/internal/jobs/notifications/fanout` | Fan out queued notifications |
-| `POST` | `/v1/internal/jobs/delivery/auto-assign` | Auto-assign unassigned rides to available drivers |
 
 ### 10.3 Reconciliation
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/v1/internal/reconciliation/transactions` | List unreconciled transactions |
-| `POST` | `/v1/internal/reconciliation/transactions/{transactionId}/resolve` | Mark transaction reconciled |
+| Method | Path                                                    | Description                    |
+| ------ | ------------------------------------------------------- | ------------------------------ |
+| `GET`  | `/v1/internal/reconciliation/transactions`              | List unreconciled transactions |
+| `POST` | `/v1/internal/reconciliation/transactions/{id}/resolve` | Mark transaction reconciled    |
 
 ### 10.4 System Events
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/v1/internal/events/ride-updated` | Internal ride state change trigger |
-| `POST` | `/v1/internal/events/delivery-updated` | Internal delivery state change trigger |
+| Method | Path                                       | Description                     |
+| ------ | ------------------------------------------ | ------------------------------- |
+| `POST` | `/v1/internal/events/resource-updated`     | Resource state change trigger   |
 | `POST` | `/v1/internal/events/notification-created` | Enqueue notification for fanout |
 
 ---
 
-## 11. Realtime Events
+## 11. Realtime Events (template)
 
-Transport: **SSE or WebSockets** via Elysia. Events are consumed by the customer app, driver app, and admin dashboard.
+Transport: **SSE or WebSockets** via Elysia. Event name prefixes use the domain noun when instantiating (`resource` → `order`, `booking`, …).
 
-```mermaid
-sequenceDiagram
-    participant C as Customer App
-    participant API as Move API
-    participant D as Driver App
-    participant ADM as Admin Dashboard
-
-    C->>API: POST /v1/app/customer/rides
-    API-->>C: ride.created (SSE)
-    API-->>ADM: ride.created (SSE)
-
-    ADM->>API: POST /v1/admin/rides/{id}/assign-driver
-    API-->>D: driver.task_offered (SSE)
-    API-->>C: ride.assigned_driver (SSE)
-    API-->>ADM: ride.assigned_driver (SSE)
-
-    D->>API: POST /v1/app/driver/tasks/{id}/accept
-    API-->>C: ride.accepted (SSE)
-
-    loop Every location heartbeat
-        D->>API: POST /v1/app/driver/location
-        API-->>C: driver.location_updated (SSE)
-        API-->>ADM: driver.location_updated (SSE)
-        API-->>C: delivery.eta_updated (SSE)
-    end
-
-    D->>API: POST /v1/app/driver/tasks/{id}/delivered
-    API-->>C: ride.delivered (SSE)
-    API-->>ADM: delivery.completed (SSE)
-    API-->>D: transaction.completed (SSE)
-```
-
-### Full Event Catalog
-
-| Event | Consumers |
-|---|---|
-| `ride.created` | Admin |
-| `ride.updated` | Customer · Admin |
-| `ride.accepted` | Customer |
-| `ride.assigned_driver` | Customer · Admin |
-| `ride.delivered` | Customer · Admin |
-| `driver.location_updated` | Customer · Admin |
-| `driver.task_offered` | Driver |
-| `driver.task_expired` | Driver |
-| `delivery.eta_updated` | Customer |
-| `delivery.completed` | Admin |
-| `notification.created` | Customer · Driver · Admin |
-| `notification.read` | Customer · Driver · Admin |
-| `message.created` | Customer · Driver |
-| `conversation.read` | Customer · Driver |
-| `transaction.completed` | Driver · Admin |
-| `payout.paid` | Driver · Admin |
-| `settings.updated` | Admin |
+| Event                   | Consumers        |
+| ----------------------- | ---------------- |
+| `resource.created`      | Admin            |
+| `resource.updated`      | Customer · Admin |
+| `resource.accepted`     | Customer         |
+| `resource.completed`    | Customer · Admin |
+| `resource.cancelled`    | Customer · Admin |
+| `notification.created`  | Customer · Admin |
+| `notification.read`     | Customer · Admin |
+| `message.created`       | Customer · Admin |
+| `conversation.read`     | Customer         |
+| `transaction.completed` | Admin            |
+| `settings.updated`      | Admin            |
 
 ---
 
-## 12. Background Jobs
+## 12. Background Jobs (template)
 
-```mermaid
-graph LR
-    subgraph Triggers
-        T1[Scheduled cron]
-        T2[Internal job endpoint]
-        T3[Webhook callback]
-    end
-
-    subgraph Redis Queue
-        Q[(Job queue)]
-    end
-
-    subgraph Workers
-        W1[Payout worker]
-        W2[Export worker]
-        W3[Notification fanout]
-        W4[Reconciliation worker]
-        W5[Auto-assign worker]
-        W6[ETA refresh worker]
-        W7[Refund workflow]
-    end
-
-    subgraph Outputs
-        O1[Bank / mobile money payout]
-        O2[CSV / PDF export file]
-        O3[Push / SMS notifications]
-        O4[Reconciliation report]
-        O5[Driver task offer]
-        O6[Updated ETA event]
-        O7[Refund transaction]
-    end
-
-    T1 --> Q
-    T2 --> Q
-    T3 --> Q
-
-    Q --> W1 --> O1
-    Q --> W2 --> O2
-    Q --> W3 --> O3
-    Q --> W4 --> O4
-    Q --> W5 --> O5
-    Q --> W6 --> O6
-    Q --> W7 --> O7
-```
-
-| Worker | Trigger | Description |
-|---|---|---|
-| Payout execution | Scheduled / `/jobs/payouts/run` | Process approved payouts to drivers via bank or mobile money |
-| Export generation | On demand / `/jobs/exports/run` | Generate CSV or PDF report files to S3 |
-| Notification fanout | `/jobs/notifications/fanout` | Deliver queued push/SMS notifications to recipients |
-| Reconciliation | Scheduled / `/jobs/reconciliation/run` | Match platform records against provider transaction logs |
-| Delivery auto-assign | `/jobs/delivery/auto-assign` | Match unassigned rides to nearest available driver |
-| Route & ETA refresh | Continuous | Recalculate ETA as driver location updates |
-| Refund approval | Event-driven | Orchestrate multi-step refund approval flow |
-| Scheduled summaries | Scheduled | Generate daily/weekly summary reports for staff |
+| Worker              | Trigger                                | Description                                              |
+| ------------------- | -------------------------------------- | -------------------------------------------------------- |
+| Export generation   | On demand / `/jobs/exports/run`        | Generate CSV or PDF report files to S3                   |
+| Notification fanout | `/jobs/notifications/fanout`           | Deliver queued push/SMS notifications                    |
+| Reconciliation      | Scheduled / `/jobs/reconciliation/run` | Match platform records against provider transaction logs |
+| Upload processing   | Queue after upload complete            | Process/transcode assets, mark ready or failed           |
+| Refund approval     | Event-driven                           | Orchestrate multi-step refund approval flow              |
+| Scheduled summaries | Scheduled                              | Generate daily/weekly summary reports for staff          |
 
 ---
 
 ## 13. Audit & Compliance
 
-The following actions must produce an audit log entry:
+Fixed list of actions that must produce an audit log entry — extend with app-specific events as needed, never remove from the core list:
 
-- Admin login / logout
-- App auth events for sensitive flows
-- Ride status changes
-- Driver assignment changes
+- Staff login / logout
+- Customer auth events for sensitive flows
+- Resource status changes
 - Refunds
-- Payout approvals and executions
 - Settings changes
-- Admin account creation / update / deletion
-- Security policy changes
-- Driver document approvals
+- Staff account creation / update / deletion
+- Security and role policy changes
 
-**Audit log schema:**
+**Audit log schema (fixed):**
 
 ```json
 {
   "id": "aud_001",
-  "actorId": "adm_123",
+  "actorId": "usr_123",
   "actorType": "staff",
-  "actionType": "ride.status_changed",
-  "entityType": "ride",
-  "entityId": "ride_2189",
-  "beforeSnapshot": { "rideStatus": "accepted" },
-  "afterSnapshot":  { "rideStatus": "cancelled" },
+  "actionType": "resource.status_changed",
+  "entityType": "resource",
+  "entityId": "res_2189",
+  "beforeSnapshot": { "resourceStatus": "accepted" },
+  "afterSnapshot": { "resourceStatus": "cancelled" },
   "requestId": "req_01JXYZ",
   "ipAddress": "196.216.1.10",
   "createdAt": "2026-04-04T08:42:00Z"
 }
 ```
 
+`actorType` values in the default template: `customer` | `staff` | `system`.
+
 ---
 
 ## 14. Treaty SDK Guidance
 
-The Elysia Treaty SDK is organised by surface:
-
 ```typescript
-// SDK surfaces
-sdk.admin
-sdk.app.customer
-sdk.app.driver
+// SDK surfaces (fixed naming)
+sdk.admin;
+sdk.app.customer;
 
 // Each surface exposes typed methods for:
 // - route params
@@ -1364,15 +908,26 @@ sdk.app.driver
 // - error types
 
 // Example usage
-const { data, error } = await sdk.app.customer.rides.post({
-  pickup:  { latitude: -6.7727, longitude: 39.2608 },
-  dropoff: { latitude: -6.7489, longitude: 39.2768 },
-  paymentMethodId: "pm_001",
+const { data, error } = await sdk.app.customer.resources.post({
+  // app-specific body fields
 });
 
-const { data: ride } = await sdk.admin.rides({ rideId: "ride_2189" }).get();
+const { data: resource } = await sdk.admin.resources({ id: "res_2189" }).get();
 ```
 
 ---
 
-*This specification is the canonical cross-client platform contract for the Move relocation platform. All admin and app clients should consume the shared backend through Treaty. Core business logic must live in the shared platform layer — never in client-specific route handlers.*
+## 15. How to Instantiate a New App from This Template
+
+1. **Do not redesign Section 3 (Auth).** Keep Better Auth, `principalType` (`customer` | `staff`), customer profile linking, guards, and staff RBAC skeleton. Add app-specific columns to `customer` only if needed; extend the permission catalog for staff.
+2. **Rename `resource`** (route segments, event names, permission group, table) to the domain noun — e.g. `order`, `booking`, `listing`, `job`, `appointment`.
+3. **Define the resource’s own fields** (geo, scheduling, catalog references, pricing breakdown) and rename the states in Section 5.1 to match the domain lifecycle.
+4. **Implement `modules/domain/`** plus customer resource routes and admin resource routes. Keep business logic out of thin handlers.
+5. **Copy unmodified:** stack layout (Section 2), API envelope (Section 6), surface map (Section 7), shared uploads pattern, internal/webhook pattern, audit shape.
+6. **Wire** OpenAPI tags, app composition (`customerApp`, admin routes, uploads), and Treaty surfaces `sdk.app.customer` / `sdk.admin`.
+7. **Do not add a third principal type** in the default product. If a future product needs another actor type, that is an explicit extension of Section 3 — document it as a fork, not as silent drift from this template.
+
+---
+
+_This specification is the canonical cross-application platform template for a **two-principal** backend: **customer** and **staff**. All admin and app clients consume the shared backend through Treaty. The Authentication & Authorization module (Section 3) is the one piece every application shares unmodified — core business logic for the domain module must live in `modules/domain/`, never only in client-specific route handlers._
+This specification is the canonical cross-client platform contract for the Move relocation platform. All admin and app clients should consume the shared backend through Treaty. Core business logic must live in the shared platform layer — never in client-specific route handlers.*

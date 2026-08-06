@@ -27,7 +27,6 @@ const customerProfileSchema = t.Object({
 	email: t.String(),
 	phoneNumber: t.String(),
 	avatarUrl: t.Union([t.String(), t.Null()]),
-	totalRides: t.Number(),
 	status: t.String(),
 	notificationPreferences: t.Object({
 		pushEnabled: t.Boolean(),
@@ -74,6 +73,7 @@ export function createCustomerAuthRoutes(
 	return new Elysia({
 		prefix: "/v1/app/customer/auth",
 		tags: ["customer-auth"],
+		normalize: "typebox",
 	})
 		.post(
 			"/sign-up",

@@ -2,28 +2,14 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import logixlysia from "logixlysia";
-import { createCustomerAuthRoutes } from "./modules/customer/auth/routes";
-import {
-	type CustomerAuthService,
-	createCustomerAuthService,
-} from "./modules/customer/auth/service";
-import { createDriverAuthRoutes } from "./modules/driver/auth/routes";
-import {
-	createDriverAuthService,
-	type DriverAuthService,
-} from "./modules/driver/auth/service";
+import { customerApp } from "./modules/customer";
+import { staffApp } from "./modules/staff";
 import auth from "./utils/auth";
 
-export const createApp = async (services?: {
-	customerAuthService?: CustomerAuthService;
-	driverAuthService?: DriverAuthService;
-}) => {
-	const customerAuthService =
-		services?.customerAuthService ?? createCustomerAuthService();
-	const driverAuthService =
-		services?.driverAuthService ?? createDriverAuthService();
+const MAX_REQUEST_BODY_SIZE = 5 * 1024 * 1024;
 
-	return new Elysia()
+export const createApp = async () => {
+	return new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
 		.use(
 			logixlysia({
 				config: {
@@ -45,21 +31,13 @@ export const createApp = async (services?: {
 			openapi({
 				documentation: {
 					info: {
-						title: "Move API",
+						title: "Platform API",
 						version: "0.0.0",
-						description: "Shared backend API for customer and driver clients.",
+						description: "Shared backend API for customer and staff clients.",
 					},
 					tags: [
 						{ name: "system", description: "System and health endpoints" },
 						{ name: "better-auth", description: "Better Auth endpoints" },
-						{
-							name: "customer-auth",
-							description: "Customer authentication",
-						},
-						{
-							name: "driver-auth",
-							description: "Driver authentication",
-						},
 					],
 				},
 			}),
@@ -67,7 +45,7 @@ export const createApp = async (services?: {
 		.get(
 			"/",
 			() => ({
-				name: "move-api",
+				name: "platform-api",
 				status: "ok",
 				docs: "/openapi",
 			}),
@@ -81,7 +59,7 @@ export const createApp = async (services?: {
 		.get(
 			"/health",
 			() => ({
-				name: "move-api",
+				name: "platform-api",
 				status: "ok",
 			}),
 			{
@@ -91,8 +69,8 @@ export const createApp = async (services?: {
 				},
 			},
 		)
-		.use(createCustomerAuthRoutes(customerAuthService))
-		.use(createDriverAuthRoutes(driverAuthService))
+		.use(customerApp())
+		.use(staffApp())
 		.mount(auth.handler);
 };
 

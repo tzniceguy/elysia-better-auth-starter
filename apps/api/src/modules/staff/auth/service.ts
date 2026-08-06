@@ -1,40 +1,33 @@
 import { db } from "@api/db";
-import { driver } from "@api/db/schema";
+import { getStaffByUserId } from "@api/db/lookups";
+import { staff } from "@api/db/schema";
 import auth from "@api/utils/auth";
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-export interface DriverSignUpInput {
+export interface StaffSignUpInput {
 	email: string;
 	password: string;
 	fullName: string;
 	phoneNumber: string;
-	vehicleType: string;
-	licenseNumber: string;
 }
 
-export interface DriverSignInInput {
+export interface StaffSignInInput {
 	email: string;
 	password: string;
 }
 
-export interface DriverProfileData {
+export interface StaffProfileData {
 	id: string;
 	fullName: string;
 	email: string;
 	phoneNumber: string;
-	vehicleType: string;
-	licenseNumber: string;
 	avatarUrl: string | null;
-	deliveryCount: number;
-	ratingAverage: number;
-	availability: string;
 	status: string;
-	currentLat: number | null;
-	currentLng: number | null;
+	createdAt: string;
+	updatedAt: string;
 }
 
-export type DriverAuthResult =
+export type StaffAuthResult =
 	| {
 			ok: true;
 			data: {
@@ -45,7 +38,7 @@ export type DriverAuthResult =
 					name: string;
 					principalType: string | null;
 				};
-				driver: DriverProfileData;
+				staff: StaffProfileData;
 				setCookieHeader: string | null;
 			};
 	  }
@@ -58,14 +51,12 @@ export type DriverAuthResult =
 			};
 	  };
 
-export interface DriverAuthServiceDeps {
+export interface StaffAuthServiceDeps {
 	authHandler?: (request: Request) => Promise<Response>;
 	createProfile?: (data: {
 		userId: string;
 		fullName: string;
 		phoneNumber: string;
-		vehicleType: string;
-		licenseNumber: string;
 	}) => Promise<{
 		id: string;
 		publicId: string;
@@ -75,22 +66,17 @@ export interface DriverAuthServiceDeps {
 		publicId: string;
 		fullName: string;
 		phoneNumber: string;
-		vehicleType: string;
-		licenseNumber: string;
 		avatarUrl: string | null;
-		deliveryCount: number;
-		ratingAverage: number;
-		availability: string;
 		status: string;
-		currentLat: number | null;
-		currentLng: number | null;
+		createdAt: Date;
+		updatedAt: Date;
 	} | null>;
 	cleanupUser?: (userId: string) => Promise<void>;
 }
 
 function buildForwardedRequest(
 	path: string,
-	body: Record<string, unknown>,
+	input: Record<string, unknown>,
 	request: Request,
 ): Request {
 	const url = new URL(path, request.url);
@@ -113,7 +99,7 @@ function buildForwardedRequest(
 	return new Request(url.href, {
 		method: "POST",
 		headers,
-		body: JSON.stringify(body),
+		body: JSON.stringify(input),
 	});
 }
 
@@ -124,28 +110,21 @@ function getSetCookieHeader(response: Response): string | null {
 	return single;
 }
 
-function formatDriverProfile(
+function formatStaffProfile(
 	row: NonNullable<
-		Awaited<
-			ReturnType<NonNullable<DriverAuthServiceDeps["getProfileByUserId"]>>
-		>
+		Awaited<ReturnType<NonNullable<StaffAuthServiceDeps["getProfileByUserId"]>>>
 	>,
 	email: string,
-): DriverProfileData {
+): StaffProfileData {
 	return {
 		id: row.publicId,
 		fullName: row.fullName,
 		email,
 		phoneNumber: row.phoneNumber,
-		vehicleType: row.vehicleType,
-		licenseNumber: row.licenseNumber,
 		avatarUrl: row.avatarUrl,
-		deliveryCount: row.deliveryCount,
-		ratingAverage: row.ratingAverage,
-		availability: row.availability,
 		status: row.status,
-		currentLat: row.currentLat,
-		currentLng: row.currentLng,
+		createdAt: row.createdAt.toISOString(),
+		updatedAt: row.updatedAt.toISOString(),
 	};
 }
 
@@ -160,24 +139,23 @@ function extractErrorMessage(
 	};
 }
 
-export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
+export function createStaffAuthService(deps?: StaffAuthServiceDeps) {
 	const authHandler = deps?.authHandler ?? ((req) => auth.handler(req));
-	const createProfile = deps?.createProfile ?? defaultCreateDriverProfile;
-	const getProfileByUserId =
-		deps?.getProfileByUserId ?? defaultGetDriverProfileByUserId;
+	const createProfile = deps?.createProfile ?? defaultCreateStaffProfile;
+	const getProfileByUserId = deps?.getProfileByUserId ?? defaultGetStaffByUserId;
 	const cleanupUser = deps?.cleanupUser ?? (async () => {});
 
 	async function signUp(
-		input: DriverSignUpInput,
+		input: StaffSignUpInput,
 		request: Request,
-	): Promise<DriverAuthResult> {
+	): Promise<StaffAuthResult> {
 		const forwarded = buildForwardedRequest(
 			"/api/auth/sign-up/email",
 			{
 				name: input.fullName,
 				email: input.email,
 				password: input.password,
-				principalType: "driver",
+				principalType: "staff",
 			},
 			request,
 		);
@@ -193,38 +171,35 @@ export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
 
 		const authData = (await betterRes.json()) as Record<string, unknown>;
 		const setCookieHeader = getSetCookieHeader(betterRes);
-		const user = authData.user as Record<string, unknown>;
+		const authUser = authData.user as Record<string, unknown>;
 
 		const created = await createProfile({
-			userId: user.id as string,
+			userId: authUser.id as string,
 			fullName: input.fullName,
 			phoneNumber: input.phoneNumber,
-			vehicleType: input.vehicleType,
-			licenseNumber: input.licenseNumber,
 		});
 
 		if (!created) {
-			await cleanupUser(user.id as string);
+			await cleanupUser(authUser.id as string);
 			return {
 				ok: false,
 				error: {
 					status: 500,
-					code: "DRIVER_SIGNUP_FAILED",
-					message: "Failed to create driver profile",
+					code: "STAFF_SIGNUP_FAILED",
+					message: "Failed to create staff profile",
 				},
 			};
 		}
 
-		const profile = await getProfileByUserId(user.id as string);
-
+		const profile = await getProfileByUserId(authUser.id as string);
 		if (!profile) {
-			await cleanupUser(user.id as string);
+			await cleanupUser(authUser.id as string);
 			return {
 				ok: false,
 				error: {
 					status: 500,
-					code: "DRIVER_SIGNUP_FAILED",
-					message: "Failed to create driver profile",
+					code: "STAFF_SIGNUP_FAILED",
+					message: "Failed to create staff profile",
 				},
 			};
 		}
@@ -234,21 +209,21 @@ export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
 			data: {
 				token: authData.token as string | null,
 				user: {
-					id: user.id as string,
-					email: user.email as string,
-					name: user.name as string,
-					principalType: "driver",
+					id: authUser.id as string,
+					email: authUser.email as string,
+					name: authUser.name as string,
+					principalType: "staff",
 				},
-				driver: formatDriverProfile(profile, user.email as string),
+				staff: formatStaffProfile(profile, authUser.email as string),
 				setCookieHeader,
 			},
 		};
 	}
 
 	async function login(
-		input: DriverSignInInput,
+		input: StaffSignInInput,
 		request: Request,
-	): Promise<DriverAuthResult> {
+	): Promise<StaffAuthResult> {
 		const forwarded = buildForwardedRequest(
 			"/api/auth/sign-in/email",
 			{
@@ -269,29 +244,28 @@ export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
 
 		const authData = (await betterRes.json()) as Record<string, unknown>;
 		const setCookieHeader = getSetCookieHeader(betterRes);
-		const user = authData.user as Record<string, unknown>;
-		const principalType = user.principalType as string | null;
+		const authUser = authData.user as Record<string, unknown>;
+		const principalType = authUser.principalType as string | null;
 
-		if (principalType !== "driver") {
+		if (principalType !== "staff") {
 			return {
 				ok: false,
 				error: {
 					status: 403,
 					code: "INVALID_PRINCIPAL_TYPE",
-					message: "This resource is for driver only",
+					message: "This resource is for staff only",
 				},
 			};
 		}
 
-		const profile = await getProfileByUserId(user.id as string);
-
+		const profile = await getProfileByUserId(authUser.id as string);
 		if (!profile) {
 			return {
 				ok: false,
 				error: {
 					status: 403,
-					code: "DRIVER_LOGIN_FAILED",
-					message: "Driver profile was not found.",
+					code: "STAFF_LOGIN_FAILED",
+					message: "Staff profile was not found.",
 				},
 			};
 		}
@@ -301,12 +275,12 @@ export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
 			data: {
 				token: authData.token as string | null,
 				user: {
-					id: user.id as string,
-					email: user.email as string,
-					name: user.name as string,
-					principalType: "driver",
+					id: authUser.id as string,
+					email: authUser.email as string,
+					name: authUser.name as string,
+					principalType: "staff",
 				},
-				driver: formatDriverProfile(profile, user.email as string),
+				staff: formatStaffProfile(profile, authUser.email as string),
 				setCookieHeader,
 			},
 		};
@@ -315,36 +289,27 @@ export function createDriverAuthService(deps?: DriverAuthServiceDeps) {
 	return { signUp, login };
 }
 
-async function defaultCreateDriverProfile(data: {
+async function defaultCreateStaffProfile(data: {
 	userId: string;
 	fullName: string;
 	phoneNumber: string;
-	vehicleType: string;
-	licenseNumber: string;
 }) {
 	const [row] = await db
-		.insert(driver)
+		.insert(staff)
 		.values({
 			id: nanoid(),
-			publicId: `drv_${nanoid(12)}`,
+			publicId: `stf_${nanoid(12)}`,
 			userId: data.userId,
 			fullName: data.fullName,
 			phoneNumber: data.phoneNumber,
-			vehicleType: data.vehicleType,
-			licenseNumber: data.licenseNumber,
 		})
 		.returning();
 	if (!row) return null;
 	return { id: row.id, publicId: row.publicId };
 }
 
-async function defaultGetDriverProfileByUserId(userId: string) {
-	const [row] = await db
-		.select()
-		.from(driver)
-		.where(eq(driver.userId, userId))
-		.limit(1);
-	return row ?? null;
+async function defaultGetStaffByUserId(userId: string) {
+	return getStaffByUserId(userId);
 }
 
-export type DriverAuthService = ReturnType<typeof createDriverAuthService>;
+export type StaffAuthService = ReturnType<typeof createStaffAuthService>;
