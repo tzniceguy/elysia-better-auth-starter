@@ -1,5 +1,5 @@
-import { Elysia } from "elysia";
 import auth from "@api/utils/auth";
+import { Elysia } from "elysia";
 
 export interface AuthUser {
 	id: string;
@@ -18,7 +18,9 @@ interface AuthSessionResponse {
 }
 
 const authApi = auth.api as unknown as {
-	getSession: (input: { headers: Headers }) => Promise<AuthSessionResponse | null>;
+	getSession: (input: {
+		headers: Headers;
+	}) => Promise<AuthSessionResponse | null>;
 };
 
 export const authPlugin = new Elysia({ name: "auth-plugin" })
@@ -44,6 +46,14 @@ export const authPlugin = new Elysia({ name: "auth-plugin" })
 				const principalType = user?.principalType ?? null;
 				if (!user || !principalType || !types.includes(principalType)) {
 					return status(403, { message: "Forbidden" });
+				}
+				return { user };
+			},
+		}),
+		authenticated: (enabled: boolean) => ({
+			resolve({ user, status }) {
+				if (enabled && !user) {
+					return status(401, { message: "Unauthorized" });
 				}
 				return { user };
 			},

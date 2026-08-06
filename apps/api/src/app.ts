@@ -4,12 +4,16 @@ import { Elysia } from "elysia";
 import logixlysia from "logixlysia";
 import { customerApp } from "./modules/customer";
 import { staffApp } from "./modules/staff";
+import { createUploadRoutes } from "./modules/uploads/routes";
 import auth from "./utils/auth";
 
 const MAX_REQUEST_BODY_SIZE = 5 * 1024 * 1024;
 
 export const createApp = async () => {
-	return new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
+	return new Elysia({
+		serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE },
+		normalize: "typebox",
+	})
 		.use(
 			logixlysia({
 				config: {
@@ -38,6 +42,10 @@ export const createApp = async () => {
 					tags: [
 						{ name: "system", description: "System and health endpoints" },
 						{ name: "better-auth", description: "Better Auth endpoints" },
+						{
+							name: "uploads",
+							description: "File upload presigned URL generation",
+						},
 					],
 				},
 			}),
@@ -71,6 +79,7 @@ export const createApp = async () => {
 		)
 		.use(customerApp())
 		.use(staffApp())
+		.use(createUploadRoutes())
 		.mount(auth.handler);
 };
 

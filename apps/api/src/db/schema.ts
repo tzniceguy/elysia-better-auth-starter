@@ -8,7 +8,15 @@ export {
 	verification,
 } from "./auth-schema";
 
-export { customer, staff, staffStatusEnum } from "./platform-schema";
+export {
+	asset,
+	assetRelations,
+	assetStatusEnum,
+	assetTypeEnum,
+	customer,
+	staff,
+	staffStatusEnum,
+} from "./platform-schema";
 
 export {
 	permission,

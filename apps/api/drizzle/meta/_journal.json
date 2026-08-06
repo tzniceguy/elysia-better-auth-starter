@@ -36,6 +36,13 @@
       "when": 1785508918653,
       "tag": "0004_military_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786031506084,
+      "tag": "0005_nifty_gideon",
+      "breakpoints": true
     }
   ]
 }

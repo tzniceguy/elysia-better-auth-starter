@@ -2,10 +2,12 @@ import { relations } from "drizzle-orm";
 import {
 	boolean,
 	index,
+	integer,
 	pgEnum,
 	pgTable,
 	text,
 	timestamp,
+	uuid,
 } from "drizzle-orm/pg-core";
 
 export {
@@ -49,6 +51,16 @@ export const staffStatusEnum = pgEnum("staff_status", [
 	"deleted",
 ]);
 
+export const assetTypeEnum = pgEnum("asset_type", ["document", "image"]);
+
+export const assetStatusEnum = pgEnum("asset_status", [
+	"uploading",
+	"uploaded",
+	"processing",
+	"ready",
+	"failed",
+]);
+
 export const staff = pgTable(
 	"staff",
 	{
@@ -85,6 +97,39 @@ export const customerRelations = relations(customer, ({ one }) => ({
 export const staffRelations = relations(staff, ({ one }) => ({
 	user: one(user, {
 		fields: [staff.userId],
+		references: [user.id],
+	}),
+}));
+
+export const asset = pgTable(
+	"asset",
+	{
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		id: uuid("id").primaryKey().defaultRandom(),
+		assetType: assetTypeEnum("asset_type").notNull(),
+		status: assetStatusEnum("status").default("uploading").notNull(),
+		ownerId: text("owner_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		storageUrl: text("storage_url").notNull(),
+		mimeType: text("mime_type"),
+		fileSize: integer("file_size"),
+	},
+	(table) => [
+		index("asset_status_idx").on(table.status),
+		index("asset_type_idx").on(table.assetType),
+		index("asset_owner_idx").on(table.ownerId),
+	],
+);
+
+export const assetRelations = relations(asset, ({ one }) => ({
+	owner: one(user, {
+		fields: [asset.ownerId],
 		references: [user.id],
 	}),
 }));
