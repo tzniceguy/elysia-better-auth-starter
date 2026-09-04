@@ -1,4 +1,6 @@
 import { fail, ok } from "@api/lib/http";
+import { customerGuard } from "@api/plugins/guards/customer-guard";
+import auth from "@api/utils/auth";
 import { Elysia, t } from "elysia";
 import { type CustomerAuthService, createCustomerAuthService } from "./service";
 
@@ -66,6 +68,45 @@ const errorResponse = t.Object({
 	meta: metaSchema,
 	error: errorSchema,
 });
+
+const sessionSchema = t.Object({
+	id: t.String(),
+	token: t.String(),
+	createdAt: t.String(),
+	expiresAt: t.String(),
+	ipAddress: t.Union([t.String(), t.Null()]),
+	userAgent: t.Union([t.String(), t.Null()]),
+});
+
+const listSessionsResponse = t.Object({
+	data: t.Object({
+		sessions: t.Array(sessionSchema),
+	}),
+	meta: metaSchema,
+	error: t.Null(),
+});
+
+const successStatusResponse = t.Object({
+	data: t.Object({ success: t.Literal(true) }),
+	meta: metaSchema,
+	error: t.Null(),
+});
+
+const revokeSessionBody = t.Object({
+	token: t.String(),
+});
+
+interface AuthSessionResponse {
+	session?: {
+		token?: string | null;
+	} | null;
+}
+
+const authApi = auth.api as unknown as {
+	getSession: (input: {
+		headers: Headers;
+	}) => Promise<AuthSessionResponse | null>;
+};
 
 export function createCustomerAuthRoutes(
 	service: CustomerAuthService = createCustomerAuthService(),
@@ -143,5 +184,108 @@ export function createCustomerAuthRoutes(
 					summary: "Customer login",
 				},
 			},
+		)
+		.use(customerGuard)
+		.guard({ customerOnly: true }, (app) =>
+			app
+				.post(
+					"/logout",
+					async ({ request, set }) => {
+						const result = await service.logout(request);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok({ success: true as const });
+					},
+					{
+						response: {
+							200: successStatusResponse,
+							401: errorResponse,
+						},
+						detail: {
+							tags: ["customer-auth"],
+							summary: "Logout current customer session",
+						},
+					},
+				)
+				.post(
+					"/revoke-sessions",
+					async ({ request, set }) => {
+						const result = await service.revokeSessions(request);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok({ success: true as const });
+					},
+					{
+						response: {
+							200: successStatusResponse,
+							401: errorResponse,
+						},
+						detail: {
+							tags: ["customer-auth"],
+							summary: "Revoke all customer sessions",
+						},
+					},
+				)
+				.get(
+					"/sessions",
+					async ({ request, set }) => {
+						const result = await service.listSessions(request);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok({ sessions: result.data.sessions });
+					},
+					{
+						response: {
+							200: listSessionsResponse,
+							401: errorResponse,
+						},
+						detail: {
+							tags: ["customer-auth"],
+							summary: "List active customer sessions",
+						},
+					},
+				)
+				.post(
+					"/revoke-session",
+					async ({ body, request, set }) => {
+						const session = await authApi.getSession({
+							headers: request.headers,
+						});
+						const currentSessionToken = session?.session?.token;
+						if (!currentSessionToken) {
+							set.status = 401;
+							return fail("UNAUTHORIZED", "Unauthorized");
+						}
+
+						const result = await service.revokeSession(
+							request,
+							currentSessionToken,
+							body.token,
+						);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok({ success: true as const });
+					},
+					{
+						body: revokeSessionBody,
+						response: {
+							200: successStatusResponse,
+							401: errorResponse,
+							409: errorResponse,
+						},
+						detail: {
+							tags: ["customer-auth"],
+							summary: "Revoke a single customer session",
+						},
+					},
+				),
 		);
 }

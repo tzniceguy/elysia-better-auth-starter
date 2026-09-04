@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import {
-	type CustomerSignUpInput,
-	createCustomerAuthService,
-} from "@api/modules/customer/auth/service";
+	type StaffSignUpInput,
+	createStaffAuthService,
+} from "@api/modules/staff/auth/service";
 
-const signupInput: CustomerSignUpInput = {
-	email: "customer@example.com",
+const signupInput: StaffSignUpInput = {
+	email: "staff@example.com",
 	password: "password123",
-	fullName: "Customer User",
+	fullName: "Staff User",
 	phoneNumber: "+255700000000",
 };
 
 const loginInput = {
-	email: "customer@example.com",
+	email: "staff@example.com",
 	password: "password123",
 };
 
@@ -23,23 +23,19 @@ function makeFullProfile(
 		phoneNumber: string;
 		avatarUrl: string | null;
 		status: string;
-		pushEnabled: boolean;
-		promotionalEnabled: boolean;
-		lastActiveAt: Date;
-		registeredAt: Date;
+		createdAt: Date;
+		updatedAt: Date;
 	}>,
 ) {
 	return {
 		id: `internal_${publicId}`,
 		publicId,
-		fullName: "Customer User",
+		fullName: "Staff User",
 		phoneNumber: "+255700000000",
 		avatarUrl: null as string | null,
 		status: "active",
-		pushEnabled: true,
-		promotionalEnabled: false,
-		lastActiveAt: new Date(),
-		registeredAt: new Date(),
+		createdAt: new Date(),
+		updatedAt: new Date(),
 		...overrides,
 	};
 }
@@ -55,7 +51,7 @@ function makeAuthSuccessResponse(
 				id: "usr_123",
 				email: signupInput.email,
 				name: signupInput.email,
-				principalType: "customer",
+				principalType: "staff",
 			},
 			...overrides,
 		}),
@@ -93,20 +89,20 @@ function makeSessionsResponse(
 	});
 }
 
-describe("Customer auth service", () => {
-	it("returns customer signup data and cookie header on success", async () => {
-		const service = createCustomerAuthService({
+describe("Staff auth service", () => {
+	it("returns staff signup data and cookie header on success", async () => {
+		const service = createStaffAuthService({
 			authHandler: async () => makeAuthSuccessResponse(),
 			createProfile: async () => ({
-				id: "internal_cus_123",
-				publicId: "cus_123",
+				id: "internal_stf_123",
+				publicId: "stf_123",
 			}),
-			getProfileByUserId: async () => makeFullProfile("cus_123"),
+			getProfileByUserId: async () => makeFullProfile("stf_123"),
 		});
 
 		const result = await service.signUp(
 			signupInput,
-			new Request("http://localhost/v1/app/customer/auth/sign-up"),
+			new Request("http://localhost/v1/app/staff/auth/sign-up"),
 		);
 
 		expect(result.ok).toBe(true);
@@ -115,11 +111,11 @@ describe("Customer auth service", () => {
 		expect(result.data.token).toBe("session-token");
 		expect(result.data.setCookieHeader).toContain("better-auth.session=abc");
 		expect(result.data.user.id).toBe("usr_123");
-		expect(result.data.customer.id).toBe("cus_123");
+		expect(result.data.staff.id).toBe("stf_123");
 	});
 
 	it("maps better-auth signup failures to api errors", async () => {
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthErrorResponse(
 					409,
@@ -130,7 +126,7 @@ describe("Customer auth service", () => {
 
 		const result = await service.signUp(
 			signupInput,
-			new Request("http://localhost/v1/app/customer/auth/sign-up"),
+			new Request("http://localhost/v1/app/staff/auth/sign-up"),
 		);
 
 		expect(result.ok).toBe(false);
@@ -141,7 +137,7 @@ describe("Customer auth service", () => {
 	});
 
 	it("maps better-auth login failures to api errors", async () => {
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthErrorResponse(
 					401,
@@ -152,7 +148,7 @@ describe("Customer auth service", () => {
 
 		const result = await service.login(
 			loginInput,
-			new Request("http://localhost/v1/app/customer/auth/login"),
+			new Request("http://localhost/v1/app/staff/auth/login"),
 		);
 
 		expect(result.ok).toBe(false);
@@ -162,9 +158,9 @@ describe("Customer auth service", () => {
 		expect(result.error.code).toBe("INVALID_CREDENTIALS");
 	});
 
-	it("cleans up the auth user when customer profile persistence fails", async () => {
+	it("cleans up the auth user when staff profile persistence fails", async () => {
 		const cleanedUserIds: string[] = [];
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthSuccessResponse({
 					user: {
@@ -181,7 +177,7 @@ describe("Customer auth service", () => {
 
 		const result = await service.signUp(
 			signupInput,
-			new Request("http://localhost/v1/app/customer/auth/sign-up"),
+			new Request("http://localhost/v1/app/staff/auth/sign-up"),
 		);
 
 		expect(result.ok).toBe(false);
@@ -189,44 +185,42 @@ describe("Customer auth service", () => {
 		if (result.ok) return;
 
 		expect(result.error.status).toBe(500);
-		expect(result.error.code).toBe("CUSTOMER_SIGNUP_FAILED");
+		expect(result.error.code).toBe("STAFF_SIGNUP_FAILED");
 	});
 
-	it("returns customer login data and cookie header on success", async () => {
-		const service = createCustomerAuthService({
+	it("returns staff login data and cookie header on success", async () => {
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthSuccessResponse(
 					{ token: "session-token-login" },
 					{ "set-cookie": "better-auth.session=login-abc; Path=/; HttpOnly" },
 				),
-			getProfileByUserId: async () => makeFullProfile("cus_123"),
+			getProfileByUserId: async () => makeFullProfile("stf_123"),
 		});
 
 		const result = await service.login(
 			loginInput,
-			new Request("http://localhost/v1/app/customer/auth/login"),
+			new Request("http://localhost/v1/app/staff/auth/login"),
 		);
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 
 		expect(result.data.token).toBe("session-token-login");
-		expect(result.data.setCookieHeader).toContain(
-			"better-auth.session=login-abc",
-		);
+		expect(result.data.setCookieHeader).toContain("better-auth.session=login-abc");
 		expect(result.data.user.id).toBe("usr_123");
-		expect(result.data.customer.id).toBe("cus_123");
+		expect(result.data.staff.id).toBe("stf_123");
 	});
 
-	it("returns error if customer profile is missing on login", async () => {
-		const service = createCustomerAuthService({
+	it("returns error if staff profile is missing on login", async () => {
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthSuccessResponse({
 					user: {
 						id: "usr_123",
 						email: loginInput.email,
 						name: loginInput.email,
-						principalType: "customer",
+						principalType: "staff",
 					},
 				}),
 			getProfileByUserId: async () => null,
@@ -234,19 +228,19 @@ describe("Customer auth service", () => {
 
 		const result = await service.login(
 			loginInput,
-			new Request("http://localhost/v1/app/customer/auth/login"),
+			new Request("http://localhost/v1/app/staff/auth/login"),
 		);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 
 		expect(result.error.status).toBe(403);
-		expect(result.error.code).toBe("CUSTOMER_LOGIN_FAILED");
-		expect(result.error.message).toBe("Customer profile was not found.");
+		expect(result.error.code).toBe("STAFF_LOGIN_FAILED");
+		expect(result.error.message).toBe("Staff profile was not found.");
 	});
 
-	it("rejects login for non-customer principals", async () => {
-		const service = createCustomerAuthService({
+	it("rejects login for non-staff principals", async () => {
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthSuccessResponse({
 					user: {
@@ -260,7 +254,7 @@ describe("Customer auth service", () => {
 
 		const result = await service.login(
 			loginInput,
-			new Request("http://localhost/v1/app/customer/auth/login"),
+			new Request("http://localhost/v1/app/staff/auth/login"),
 		);
 
 		expect(result.ok).toBe(false);
@@ -270,9 +264,9 @@ describe("Customer auth service", () => {
 		expect(result.error.code).toBe("INVALID_PRINCIPAL_TYPE");
 	});
 
-	it("lists customer sessions with GET forwarding and null-safe fields", async () => {
+	it("lists staff sessions with GET forwarding and null-safe fields", async () => {
 		let forwardedRequest: Request | null = null;
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async (request) => {
 				forwardedRequest = request;
 				return makeSessionsResponse([
@@ -295,7 +289,7 @@ describe("Customer auth service", () => {
 		});
 
 		const result = await service.listSessions(
-			new Request("http://localhost/v1/app/customer/auth/sessions"),
+			new Request("http://localhost/v1/app/staff/auth/sessions"),
 		);
 
 		expect(result.ok).toBe(true);
@@ -313,13 +307,13 @@ describe("Customer auth service", () => {
 	});
 
 	it("maps list sessions failure to api errors", async () => {
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthErrorResponse(401, "UNAUTHORIZED", "Unauthorized"),
 		});
 
 		const result = await service.listSessions(
-			new Request("http://localhost/v1/app/customer/auth/sessions"),
+			new Request("http://localhost/v1/app/staff/auth/sessions"),
 		);
 
 		expect(result.ok).toBe(false);
@@ -328,9 +322,9 @@ describe("Customer auth service", () => {
 		expect(result.error.code).toBe("UNAUTHORIZED");
 	});
 
-	it("revokes a specific customer session by token", async () => {
+	it("revokes a specific staff session by token", async () => {
 		let forwardedRequest: Request | null = null;
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async (request) => {
 				forwardedRequest = request;
 				return new Response(JSON.stringify({ success: true }), {
@@ -341,7 +335,7 @@ describe("Customer auth service", () => {
 		});
 
 		const result = await service.revokeSession(
-			new Request("http://localhost/v1/app/customer/auth/revoke-session"),
+			new Request("http://localhost/v1/app/staff/auth/revoke-session"),
 			"current-session-token",
 			"target-session-token",
 		);
@@ -359,13 +353,13 @@ describe("Customer auth service", () => {
 	});
 
 	it("maps revoke session failure to api errors", async () => {
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () =>
 				makeAuthErrorResponse(401, "UNAUTHORIZED", "Unauthorized"),
 		});
 
 		const result = await service.revokeSession(
-			new Request("http://localhost/v1/app/customer/auth/revoke-session"),
+			new Request("http://localhost/v1/app/staff/auth/revoke-session"),
 			"current-session-token",
 			"target-session-token",
 		);
@@ -376,9 +370,9 @@ describe("Customer auth service", () => {
 		expect(result.error.code).toBe("UNAUTHORIZED");
 	});
 
-	it("prevents revoking current customer session", async () => {
+	it("prevents revoking current staff session", async () => {
 		let authHandlerCalls = 0;
-		const service = createCustomerAuthService({
+		const service = createStaffAuthService({
 			authHandler: async () => {
 				authHandlerCalls += 1;
 				return new Response(JSON.stringify({ success: true }), {
@@ -389,7 +383,7 @@ describe("Customer auth service", () => {
 		});
 
 		const result = await service.revokeSession(
-			new Request("http://localhost/v1/app/customer/auth/revoke-session"),
+			new Request("http://localhost/v1/app/staff/auth/revoke-session"),
 			"current-session-token",
 			"current-session-token",
 		);
