@@ -51,6 +51,8 @@ export const staffStatusEnum = pgEnum("staff_status", [
 	"deleted",
 ]);
 
+export const staffRoleEnum = pgEnum("staff_role", ["admin", "operations"]);
+
 export const assetTypeEnum = pgEnum("asset_type", ["document", "image"]);
 
 export const assetStatusEnum = pgEnum("asset_status", [
@@ -78,12 +80,14 @@ export const staff = pgTable(
 		fullName: text("full_name").notNull(),
 		phoneNumber: text("phone_number").notNull(),
 		avatarUrl: text("avatar_url"),
+		role: staffRoleEnum("role").default("operations").notNull(),
 		status: staffStatusEnum("status").default("active").notNull(),
 	},
 	(table) => [
 		index("staff_user_id_idx").on(table.userId),
 		index("staff_public_id_idx").on(table.publicId),
 		index("staff_status_idx").on(table.status),
+		index("staff_role_idx").on(table.role),
 	],
 );
 

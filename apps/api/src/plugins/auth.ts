@@ -6,6 +6,7 @@ export interface AuthUser {
 	email: string;
 	name: string;
 	principalType: string | null;
+	staffRole?: string | null;
 }
 
 interface AuthSessionResponse {
@@ -14,6 +15,7 @@ interface AuthSessionResponse {
 		email?: string;
 		name?: string;
 		principalType?: string | null;
+		staffRole?: string | null;
 	} | null;
 }
 
@@ -36,6 +38,7 @@ export const authPlugin = new Elysia({ name: "auth-plugin" })
 			email: sessionUser.email,
 			name: sessionUser.name,
 			principalType: sessionUser.principalType ?? null,
+			staffRole: sessionUser.staffRole ?? null,
 		};
 
 		return { user };

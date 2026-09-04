@@ -12,13 +12,15 @@ export const staffGuard = new Elysia({ name: "staff-guard" })
 		}
 
 		const [row] = await db
-			.select({ id: staff.id })
+			.select({ id: staff.id, role: staff.role })
 			.from(staff)
 			.where(eq(staff.userId, user.id))
 			.limit(1);
 
 		if (!row) return { staffSession: null };
-		return { staffSession: { staffId: row.id, userId: user.id } };
+		return {
+			staffSession: { staffId: row.id, userId: user.id, role: row.role },
+		};
 	})
 	.macro({
 		staffOnly: (enabled: boolean) => ({

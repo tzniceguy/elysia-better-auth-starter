@@ -15,6 +15,7 @@ export {
 	assetTypeEnum,
 	customer,
 	staff,
+	staffRoleEnum,
 	staffStatusEnum,
 } from "./platform-schema";
 

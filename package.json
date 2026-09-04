@@ -24,7 +24,8 @@
 		"db:generate": "pnpm --dir apps/api db:generate",
 		"db:push": "pnpm --dir apps/api db:push",
 		"check:api": "pnpm --dir apps/api typecheck",
-		"test:api": "pnpm --dir apps/api test"
+		"test:api": "pnpm --dir apps/api test",
+		"seed:admin": "pnpm --dir apps/api seed:admin"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "~2.4.5",
