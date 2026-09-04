@@ -43,6 +43,13 @@
       "when": 1786031506084,
       "tag": "0005_nifty_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788523324553,
+      "tag": "0006_mean_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }
