@@ -38,6 +38,18 @@ export type StaffAuthResult =
 					name: string;
 					principalType: string | null;
 				};
+				staff: StaffProfileData;
+				setCookieHeader: string | null;
+			};
+	  }
+	| {
+			ok: false;
+			error: {
+				status: number;
+				code: string;
+				message: string;
+			};
+	  };
 
 export type LogoutResult =
 	| { ok: true; data: { success: true } }
@@ -48,7 +60,7 @@ export type LogoutResult =
 				code: string;
 				message: string;
 			};
-				};
+	  };
 
 export interface SessionData {
 	id: string;
@@ -61,27 +73,6 @@ export interface SessionData {
 
 export type ListSessionsResult =
 	| { ok: true; data: { sessions: SessionData[] } }
-	| {
-			ok: false;
-			error: {
-				status: number;
-				code: string;
-				message: string;
-			};
-				};
-				staff: StaffProfileData;
-				setCookieHeader: string | null;
-			};
-	  }
-
-	  function toIsoString(value: unknown): string {
-			if (value instanceof Date) return value.toISOString();
-			if (typeof value === "string" || typeof value === "number") {
-				const date = new Date(value);
-				if (!Number.isNaN(date.getTime())) return date.toISOString();
-			}
-			return new Date(0).toISOString();
-	  }
 	| {
 			ok: false;
 			error: {
@@ -176,6 +167,15 @@ function extractErrorMessage(
 		code: (err.code as string) ?? "AUTH_ERROR",
 		message: (err.message as string) ?? "Authentication failed",
 	};
+}
+
+function toIsoString(value: unknown): string {
+	if (value instanceof Date) return value.toISOString();
+	if (typeof value === "string" || typeof value === "number") {
+		const date = new Date(value);
+		if (!Number.isNaN(date.getTime())) return date.toISOString();
+	}
+	return new Date(0).toISOString();
 }
 
 export function createStaffAuthService(deps?: StaffAuthServiceDeps) {

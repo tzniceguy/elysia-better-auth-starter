@@ -294,8 +294,12 @@ describe("Staff auth service", () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(forwardedRequest?.method).toBe("GET");
-		expect(forwardedRequest?.url).toBe("http://localhost/api/auth/list-sessions");
+		const forwarded = forwardedRequest as unknown as {
+			method: string;
+			url: string;
+		};
+		expect(forwarded.method).toBe("GET");
+		expect(forwarded.url).toBe("http://localhost/api/auth/list-sessions");
 		expect(result.data.sessions).toHaveLength(2);
 		expect(result.data.sessions[0]?.token).toBe("token_1");
 		expect(result.data.sessions[1]?.ipAddress).toBeNull();
@@ -337,9 +341,14 @@ describe("Staff auth service", () => {
 		);
 
 		expect(result.ok).toBe(true);
-		expect(forwardedRequest?.method).toBe("POST");
-		expect(forwardedRequest?.url).toBe("http://localhost/api/auth/revoke-session");
-		const payload = (await forwardedRequest?.json()) as { token: string };
+		const forwarded = forwardedRequest as unknown as {
+			method: string;
+			url: string;
+			json: () => Promise<{ token: string }>;
+		};
+		expect(forwarded.method).toBe("POST");
+		expect(forwarded.url).toBe("http://localhost/api/auth/revoke-session");
+		const payload = await forwarded.json();
 		expect(payload.token).toBe("target-session-token");
 	});
 
