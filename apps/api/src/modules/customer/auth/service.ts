@@ -27,6 +27,37 @@ export interface CustomerProfileData {
 		pushEnabled: boolean;
 		promotionalEnabled: boolean;
 	};
+
+export type LogoutResult =
+	| { ok: true; data: { success: true } }
+	| {
+			ok: false;
+			error: {
+				status: number;
+				code: string;
+				message: string;
+			};
+	};
+
+export interface SessionData {
+	id: string;
+	token: string;
+	createdAt: string;
+	expiresAt: string;
+	ipAddress: string | null;
+	userAgent: string | null;
+}
+
+export type ListSessionsResult =
+	| { ok: true; data: { sessions: SessionData[] } }
+	| {
+			ok: false;
+			error: {
+				status: number;
+				code: string;
+				message: string;
+			};
+	};
 	lastActiveAt: string;
 	registeredAt: string;
 }
@@ -45,6 +76,15 @@ export type CustomerAuthResult =
 				customer: CustomerProfileData;
 				setCookieHeader: string | null;
 			};
+	  }
+
+	  function toIsoString(value: unknown): string {
+			if (value instanceof Date) return value.toISOString();
+			if (typeof value === "string" || typeof value === "number") {
+				const date = new Date(value);
+				if (!Number.isNaN(date.getTime())) return date.toISOString();
+			}
+			return new Date(0).toISOString();
 	  }
 	| {
 			ok: false;
@@ -84,6 +124,7 @@ function buildForwardedRequest(
 	path: string,
 	input: Record<string, unknown>,
 	request: Request,
+	method: "GET" | "POST" = "POST",
 ): Request {
 	const url = new URL(path, request.url);
 	const headers = new Headers({
@@ -102,11 +143,9 @@ function buildForwardedRequest(
 		if (value) headers.set(key, value);
 	}
 
-	return new Request(url.href, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(input),
-	});
+	const init: RequestInit = { method, headers };
+	if (method !== "GET") init.body = JSON.stringify(input);
+	return new Request(url.href, init);
 }
 
 function getSetCookieHeader(response: Response): string | null {
@@ -301,7 +340,104 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 		};
 	}
 
-	return { signUp, login };
+	async function logout(request: Request): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest("/api/auth/sign-out", {}, request);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = (await betterRes.json()) as Record<string, unknown>;
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	async function revokeSessions(request: Request): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/revoke-sessions",
+			{},
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = (await betterRes.json()) as Record<string, unknown>;
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	async function listSessions(request: Request): Promise<ListSessionsResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/list-sessions",
+			{},
+			request,
+			"GET",
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = (await betterRes.json()) as Record<string, unknown>;
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		const data = (await betterRes.json()) as
+			| Record<string, unknown>
+			| Record<string, unknown>[];
+		const rawSessions = Array.isArray(data)
+			? data
+			: ((data.sessions as Record<string, unknown>[] | undefined) ?? []);
+
+		return {
+			ok: true,
+			data: {
+				sessions: rawSessions.map((session) => ({
+					id: String(session.id ?? ""),
+					token: String(session.token ?? ""),
+					createdAt: toIsoString(session.createdAt),
+					expiresAt: toIsoString(session.expiresAt),
+					ipAddress:
+						typeof session.ipAddress === "string" ? session.ipAddress : null,
+					userAgent:
+						typeof session.userAgent === "string" ? session.userAgent : null,
+				})),
+			},
+		};
+	}
+
+	async function revokeSession(
+		request: Request,
+		currentSessionToken: string,
+		token: string,
+	): Promise<LogoutResult> {
+		if (currentSessionToken === token) {
+			return {
+				ok: false,
+				error: {
+					status: 409,
+					code: "CANNOT_REVOKE_CURRENT_SESSION",
+					message: "Cannot revoke the current session",
+				},
+			};
+		}
+
+		const forwarded = buildForwardedRequest(
+			"/api/auth/revoke-session",
+			{ token },
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = (await betterRes.json()) as Record<string, unknown>;
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	return { signUp, login, logout, revokeSessions, listSessions, revokeSession };
 }
 
 async function defaultCreateCustomerProfile(data: {
