@@ -230,6 +230,15 @@ describe("uploads service", () => {
 				mimeType: "image/webp",
 				assetType: "image",
 				ownerId: "usr_1",
+				rawKey: "images/raw.png",
+				fileSize: 4000,
+				processedSize: 1000,
+				origWidth: 800,
+				origHeight: 600,
+				processingStartedAt: new Date("2026-09-01T10:00:00Z"),
+				processingFinishedAt: new Date("2026-09-01T10:00:01Z"),
+				processingError: null,
+				attempts: 2,
 			});
 			const service = makeService();
 
@@ -244,6 +253,15 @@ describe("uploads service", () => {
 				storageUrl: "https://public.example/assets/asset-1.webp",
 				mimeType: "image/webp",
 				assetType: "image",
+				rawKey: "images/raw.png",
+				fileSize: 4000,
+				processedSize: 1000,
+				origWidth: 800,
+				origHeight: 600,
+				processingStartedAt: "2026-09-01T10:00:00.000Z",
+				processingFinishedAt: "2026-09-01T10:00:01.000Z",
+				processingError: null,
+				attempts: 2,
 			});
 		});
 

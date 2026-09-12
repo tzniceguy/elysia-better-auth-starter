@@ -17,7 +17,7 @@ import {
 	createUploadWorker,
 	PermanentProcessingError,
 	type UploadWorkerDeps,
-} from "@api/queues/upload/upload.worker";
+} from "@api/minions/upload/upload.worker";
 import type { Job } from "bullmq";
 
 const selectResults: Record<string, unknown>[] = [];
@@ -124,6 +124,13 @@ describe("uploads worker", () => {
 
 	it("transcodes images to WebP, writes public and sets ready", async () => {
 		rawFileBuffers.push(PNG_BYTES.buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "image/png",
+			fileSize: 4000,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await processUpload(makeJob());
@@ -144,6 +151,13 @@ describe("uploads worker", () => {
 
 	it("passes PDFs through unchanged", async () => {
 		rawFileBuffers.push(Uint8Array.from([0x25, 0x50, 0x44, 0x46]).buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "application/pdf",
+			fileSize: 100,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await processUpload(
@@ -185,6 +199,13 @@ describe("uploads worker", () => {
 
 	it("marks empty images as permanent failures", async () => {
 		rawFileBuffers.push(new Uint8Array(0).buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "image/png",
+			fileSize: 0,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await expect(processUpload(makeJob())).rejects.toThrow(

@@ -85,6 +85,25 @@ const revokeSessionBody = t.Object({
 	token: t.String(),
 });
 
+const forgetPasswordBody = t.Object({
+	email: t.String(),
+	redirectTo: t.Optional(t.String()),
+});
+
+const resetPasswordBody = t.Object({
+	token: t.String(),
+	newPassword: t.String(),
+});
+
+const resendVerificationBody = t.Object({
+	email: t.String(),
+});
+
+const changePasswordBody = t.Object({
+	currentPassword: t.String(),
+	newPassword: t.String(),
+});
+
 interface AuthSessionResponse {
 	session?: {
 		token?: string | null;
@@ -137,6 +156,54 @@ export function createStaffAuthRoutes(
 					tags: ["staff-auth"],
 					summary: "Staff login",
 				},
+			},
+		)
+		.post(
+			"/forget-password",
+			async ({ body, request, set }) => {
+				const result = await service.forgetPassword(body, request);
+				if (!result.ok) {
+					set.status = result.error.status;
+					return fail(result.error.code, result.error.message);
+				}
+				return ok({ success: true as const });
+			},
+			{
+				body: forgetPasswordBody,
+				response: { 200: successStatusResponse, 400: errorResponse },
+				detail: { tags: ["staff-auth"], summary: "Request staff password reset" },
+			},
+		)
+		.post(
+			"/reset-password",
+			async ({ body, request, set }) => {
+				const result = await service.resetPassword(body, request);
+				if (!result.ok) {
+					set.status = result.error.status;
+					return fail(result.error.code, result.error.message);
+				}
+				return ok({ success: true as const });
+			},
+			{
+				body: resetPasswordBody,
+				response: { 200: successStatusResponse, 400: errorResponse },
+				detail: { tags: ["staff-auth"], summary: "Reset staff password" },
+			},
+		)
+		.post(
+			"/resend-verification",
+			async ({ body, request, set }) => {
+				const result = await service.resendVerification(body, request);
+				if (!result.ok) {
+					set.status = result.error.status;
+					return fail(result.error.code, result.error.message);
+				}
+				return ok({ success: true as const });
+			},
+			{
+				body: resendVerificationBody,
+				response: { 200: successStatusResponse, 400: errorResponse },
+				detail: { tags: ["staff-auth"], summary: "Resend staff verification" },
 			},
 		)
 		.use(staffGuard)
@@ -202,6 +269,29 @@ export function createStaffAuthRoutes(
 						detail: {
 							tags: ["staff-auth"],
 							summary: "List active staff sessions",
+						},
+					},
+				)
+				.post(
+					"/change-password",
+					async ({ body, request, set }) => {
+						const result = await service.changePassword(body, request);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok({ success: true as const });
+					},
+					{
+						body: changePasswordBody,
+						response: {
+							200: successStatusResponse,
+							401: errorResponse,
+							400: errorResponse,
+						},
+						detail: {
+							tags: ["staff-auth"],
+							summary: "Change staff password",
 						},
 					},
 				)

@@ -168,7 +168,7 @@ export function createStaffRegisterService(
 					userId,
 					fullName: input.fullName,
 					phoneNumber: input.phoneNumber,
-					role: input.role,
+					role: input.role as never,
 					status: "active",
 				})
 				.returning();

@@ -42,6 +42,8 @@
     "logixlysia": "^6.5.0",
     "nanoid": "^5.1.0",
     "pg": "^8.21.0",
+    "resend": "^6.26.0",
+    "uuid": "^14.0.1",
     "zod": "catalog:"
   }
 }
