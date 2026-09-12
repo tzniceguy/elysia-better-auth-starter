@@ -10,7 +10,6 @@
 		"build": "tsc --noEmit",
 		"build:vite": "vite build",
 		"preview": "vite preview",
-		"test": "bun test",
 		"format": "biome format",
 		"lint": "biome lint",
 		"check": "biome check"
