@@ -25,11 +25,14 @@
 		"db:push": "pnpm --dir apps/api db:push",
 		"check:api": "pnpm --dir apps/api typecheck",
 		"test:api": "pnpm --dir apps/api test",
-		"seed:admin": "pnpm --dir apps/api seed:admin"
+		"seed:admin": "pnpm --dir apps/api seed:admin",
+		"typecheck": "pnpm check:api",
+		"test": "pnpm -r --if-present test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "~2.4.5",
 		"bun-types": "^1.3.14",
+		"lefthook": "^2.1.10",
 		"tsconfig-paths": "^4.2.0"
 	},
 	"engines": {
