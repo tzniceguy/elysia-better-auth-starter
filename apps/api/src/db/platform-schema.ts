@@ -3,6 +3,7 @@ import {
 	boolean,
 	index,
 	integer,
+	jsonb,
 	pgEnum,
 	pgTable,
 	text,
@@ -38,6 +39,7 @@ export const customer = pgTable(
 		promotionalEnabled: boolean("promotional_enabled").default(false).notNull(),
 		lastActiveAt: timestamp("last_active_at").defaultNow().notNull(),
 		registeredAt: timestamp("registered_at").defaultNow().notNull(),
+		deletedAt: timestamp("deleted_at"),
 	},
 	(table) => [
 		index("customer_user_id_idx").on(table.userId),
@@ -121,13 +123,51 @@ export const asset = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
 		storageUrl: text("storage_url").notNull(),
+		rawKey: text("raw_key"),
 		mimeType: text("mime_type"),
 		fileSize: integer("file_size"),
+		processedSize: integer("processed_size"),
+		origWidth: integer("orig_width"),
+		origHeight: integer("orig_height"),
+		processingStartedAt: timestamp("processing_started_at", {
+			withTimezone: true,
+		}),
+		processingFinishedAt: timestamp("processing_finished_at", {
+			withTimezone: true,
+		}),
+		processingError: text("processing_error"),
+		attempts: integer("attempts").default(1).notNull(),
 	},
 	(table) => [
 		index("asset_status_idx").on(table.status),
 		index("asset_type_idx").on(table.assetType),
 		index("asset_owner_idx").on(table.ownerId),
+	],
+);
+
+export const auditActorTypeEnum = pgEnum("audit_actor_type", [
+	"staff",
+	"customer",
+	"system",
+]);
+
+export const auditLog = pgTable(
+	"audit_log",
+	{
+		id: uuid("id").primaryKey(),
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		actorType: auditActorTypeEnum("actor_type").notNull(),
+		actorId: text("actor_id").notNull(),
+		action: text("action").notNull(),
+		entityType: text("entity_type").notNull(),
+		entityId: text("entity_id").notNull(),
+		metadata: jsonb("metadata"),
+	},
+	(table) => [
+		index("audit_log_entity_idx").on(table.entityType, table.entityId),
+		index("audit_log_actor_idx").on(table.actorType, table.actorId),
 	],
 );
 

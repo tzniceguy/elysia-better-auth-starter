@@ -34,12 +34,22 @@ export type CustomerProfileResult =
 			};
 	  };
 
+export interface UpdatePreferencesInput {
+	pushEnabled?: boolean;
+	promotionalEnabled?: boolean;
+}
+
 export interface CustomerProfileService {
 	get: (customerId: string, userId: string) => Promise<CustomerProfileResult>;
 	update: (
 		customerId: string,
 		userId: string,
 		input: UpdateCustomerProfileInput,
+	) => Promise<CustomerProfileResult>;
+	updatePreferences: (
+		customerId: string,
+		userId: string,
+		input: UpdatePreferencesInput,
 	) => Promise<CustomerProfileResult>;
 }
 
@@ -127,5 +137,34 @@ export function createCustomerProfileService(): CustomerProfileService {
 		return result;
 	};
 
-	return { get, update };
+	const updatePreferences: CustomerProfileService["updatePreferences"] = async (
+		customerId,
+		userId,
+		input,
+	) => {
+		const updates: Partial<{
+			pushEnabled: boolean;
+			promotionalEnabled: boolean;
+			lastActiveAt: Date;
+		}> = {};
+
+		if (input.pushEnabled !== undefined) updates.pushEnabled = input.pushEnabled;
+		if (input.promotionalEnabled !== undefined)
+			updates.promotionalEnabled = input.promotionalEnabled;
+
+		if (Object.keys(updates).length === 0) {
+			return get(customerId, userId);
+		}
+
+		updates.lastActiveAt = new Date();
+
+		await db
+			.update(customer)
+			.set(updates)
+			.where(and(eq(customer.id, customerId), eq(customer.userId, userId)));
+
+		return get(customerId, userId);
+	};
+
+	return { get, update, updatePreferences };
 }

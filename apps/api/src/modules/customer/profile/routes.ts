@@ -56,6 +56,13 @@ const updateProfileBody = t.Partial(
 	}),
 );
 
+const preferencesBody = t.Partial(
+	t.Object({
+		pushEnabled: t.Boolean(),
+		promotionalEnabled: t.Boolean(),
+	}),
+);
+
 export function createCustomerProfileRoutes(
 	service: CustomerProfileService = createCustomerProfileService(),
 ) {
@@ -127,6 +134,68 @@ export function createCustomerProfileRoutes(
 						detail: {
 							tags: ["customer-profile"],
 							summary: "Update customer profile",
+						},
+					},
+				)
+				.patch(
+					"/profile/preferences",
+					async ({ body, customerSession, set }) => {
+						if (!customerSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Customers only route");
+						}
+
+						const result = await service.updatePreferences(
+							customerSession.customerId,
+							customerSession.userId,
+							body,
+						);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok(result.data);
+					},
+					{
+						body: preferencesBody,
+						response: {
+							200: successResponse,
+							403: errorResponse,
+							404: errorResponse,
+						},
+						detail: {
+							tags: ["customer-profile"],
+							summary: "Update notification preferences",
+						},
+					},
+				)
+				.get(
+					"/me",
+					async ({ customerSession, set }) => {
+						if (!customerSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Customers only route");
+						}
+
+						const result = await service.get(
+							customerSession.customerId,
+							customerSession.userId,
+						);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok(result.data);
+					},
+					{
+						response: {
+							200: successResponse,
+							403: errorResponse,
+							404: errorResponse,
+						},
+						detail: {
+							tags: ["customer-profile"],
+							summary: "Get current customer (alias)",
 						},
 					},
 				),
