@@ -1,7 +1,8 @@
 import type { db as Db } from "@api/db";
-import { outbox } from "@api/db/schema";
-import type { bullMQConnection as BullMQConnection } from "@api/utils/que-factory";
+import { outboxEvent } from "@api/db/schema";
+import { completeEvent, failEvent } from "@api/lib/outbox";
 import type { Mailer } from "@api/utils/mail";
+import type { bullMQConnection as BullMQConnection } from "@api/utils/que-factory";
 import { type Job, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 
@@ -14,6 +15,14 @@ export interface NotificationWorkerDeps {
 export interface NotificationWorker {
 	worker: Worker;
 	sendEmail(job: Job): Promise<void>;
+}
+
+export interface EmailPayload {
+	to: string;
+	subject: string;
+	html: string;
+	kind?: string;
+	metadata?: Record<string, unknown> | null;
 }
 
 const MAX_ATTEMPTS = 5;
@@ -45,40 +54,38 @@ export async function createNotificationWorker(
 
 	async function sendEmail(job: Job) {
 		const { db, mailer } = resolved;
-		const { outboxId } = job.data as { outboxId: string };
-		if (!outboxId) return;
+		const { outboxEventId } = job.data as { outboxEventId: string };
+		if (!outboxEventId) return;
 
 		const [row] = await db
 			.select()
-			.from(outbox)
-			.where(eq(outbox.id, outboxId))
+			.from(outboxEvent)
+			.where(eq(outboxEvent.id, outboxEventId))
 			.limit(1);
 
-		if (!row || row.status === "sent") return;
+		if (!row || row.status === "completed") return;
+
+		const payload = (row.payload ?? {}) as Partial<EmailPayload>;
+		if (!payload.to || !payload.subject || !payload.html) {
+			await failEvent(db, outboxEventId, "Malformed email payload");
+			return;
+		}
 
 		try {
 			await mailer.sendMail({
-				to: row.recipient,
-				subject: row.subject,
-				html: row.bodyHtml,
+				to: payload.to,
+				subject: payload.subject,
+				html: payload.html,
 			});
-			await db
-				.update(outbox)
-				.set({ status: "sent", sentAt: new Date(), lastError: null })
-				.where(eq(outbox.id, outboxId));
+			await completeEvent(db, outboxEventId);
 		} catch (e) {
 			const attempts = (row.attempts ?? 0) + 1;
 			const message = e instanceof Error ? e.message : String(e);
 			const failed = attempts >= MAX_ATTEMPTS;
-			await db
-				.update(outbox)
-				.set({
-					status: failed ? "failed" : "pending",
-					attempts,
-					lastError: message,
-					nextRetryAt: failed ? null : new Date(Date.now() + 5000 * attempts),
-				})
-				.where(eq(outbox.id, outboxId));
+			await failEvent(db, outboxEventId, message, {
+				attempts,
+				retryAt: failed ? null : new Date(Date.now() + 5000 * attempts),
+			});
 		}
 	}
 

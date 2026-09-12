@@ -1,6 +1,7 @@
 import type { db as Db } from "@api/db";
 
 import { asset } from "@api/db/schema";
+import { recordEvent } from "@api/lib/outbox";
 import type { uploadQueue as UploadQueue } from "@api/minions/upload/upload.queue";
 import { generateId } from "@api/utils/id-generate";
 import type * as s3Module from "@api/utils/s3";
@@ -192,12 +193,22 @@ export function createUploadsService(
 			.set({ status: "uploaded", updatedAt: new Date() })
 			.where(eq(asset.id, input.assetId));
 
+		const outboxEventId = await recordEvent(db, {
+			eventType: "upload.process_requested",
+			resourceId: input.assetId,
+			payload: {
+				fileKey: input.fileKey,
+				mimeType: record.mimeType ?? "application/octet-stream",
+			},
+		});
+
 		await uploadQueue.add(
 			"processUpload",
 			{
 				assetId: input.assetId,
 				fileKey: input.fileKey,
 				mimeType: record.mimeType ?? "application/octet-stream",
+				outboxEventId,
 			},
 			{
 				jobId: input.assetId,

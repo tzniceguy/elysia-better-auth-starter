@@ -56,13 +56,30 @@ function makeDeps(): NotificationWorkerDeps {
 	} as unknown as NotificationWorkerDeps;
 }
 
-function makeJob(outboxId: string): Job {
+function makeJob(outboxEventId: string): Job {
 	return {
 		name: "sendEmail",
-		data: { outboxId },
+		data: { outboxEventId },
 		opts: { attempts: 5 },
 		attemptsMade: 0,
 	} as unknown as Job;
+}
+
+function emailEvent(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "evt-1",
+		eventType: "email.requested",
+		resourceId: "a@example.com",
+		status: "pending",
+		payload: {
+			to: "a@example.com",
+			subject: "Hi",
+			html: "<p>Hi</p>",
+			kind: "verification",
+		},
+		attempts: 0,
+		...overrides,
+	};
 }
 
 beforeEach(() => {
@@ -79,63 +96,56 @@ describe("notification minion", () => {
 		expect(worker).toBeInstanceOf(MockWorker);
 	});
 
-	it("marks sent after mailer succeeds", async () => {
-		selectResults.push({
-			id: "ob-1",
-			recipient: "a@example.com",
-			subject: "Hi",
-			bodyHtml: "<p>Hi</p>",
-			status: "pending",
-			attempts: 0,
-		});
+	it("marks the event completed after mailer succeeds", async () => {
+		selectResults.push(emailEvent());
 		const { sendEmail } = await createNotificationWorker(makeDeps());
 
-		await sendEmail(makeJob("ob-1"));
+		await sendEmail(makeJob("evt-1"));
 
 		expect(sentMails).toHaveLength(1);
-		expect(updateCalls[0]).toMatchObject({ status: "sent" });
+		expect(sentMails[0]).toMatchObject({
+			to: "a@example.com",
+			subject: "Hi",
+		});
+		expect(updateCalls[0]).toMatchObject({ status: "completed" });
 	});
 
-	it("skips already-sent rows", async () => {
-		selectResults.push({ id: "ob-1", status: "sent" });
+	it("skips already-completed events", async () => {
+		selectResults.push(emailEvent({ status: "completed" }));
 		const { sendEmail } = await createNotificationWorker(makeDeps());
 
-		await sendEmail(makeJob("ob-1"));
+		await sendEmail(makeJob("evt-1"));
 
 		expect(sentMails).toHaveLength(0);
 		expect(updateCalls).toHaveLength(0);
 	});
 
-	it("retries without throwing when mailer fails", async () => {
-		mailShouldThrow = true;
-		selectResults.push({
-			id: "ob-1",
-			recipient: "a@example.com",
-			subject: "Hi",
-			bodyHtml: "<p>Hi</p>",
-			status: "pending",
-			attempts: 0,
-		});
+	it("fails malformed payloads without sending", async () => {
+		selectResults.push(emailEvent({ payload: { to: "a@example.com" } }));
 		const { sendEmail } = await createNotificationWorker(makeDeps());
 
-		await sendEmail(makeJob("ob-1"));
+		await sendEmail(makeJob("evt-1"));
+
+		expect(sentMails).toHaveLength(0);
+		expect(updateCalls[0]).toMatchObject({ status: "failed" });
+	});
+
+	it("retries without throwing when mailer fails", async () => {
+		mailShouldThrow = true;
+		selectResults.push(emailEvent());
+		const { sendEmail } = await createNotificationWorker(makeDeps());
+
+		await sendEmail(makeJob("evt-1"));
 
 		expect(updateCalls[0]).toMatchObject({ status: "pending", attempts: 1 });
 	});
 
 	it("marks failed after max attempts", async () => {
 		mailShouldThrow = true;
-		selectResults.push({
-			id: "ob-1",
-			recipient: "a@example.com",
-			subject: "Hi",
-			bodyHtml: "<p>Hi</p>",
-			status: "pending",
-			attempts: 4,
-		});
+		selectResults.push(emailEvent({ attempts: 4 }));
 		const { sendEmail } = await createNotificationWorker(makeDeps());
 
-		await sendEmail(makeJob("ob-1"));
+		await sendEmail(makeJob("evt-1"));
 
 		expect(updateCalls[0]).toMatchObject({ status: "failed", attempts: 5 });
 	});

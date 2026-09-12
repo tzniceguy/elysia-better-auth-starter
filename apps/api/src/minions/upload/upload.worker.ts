@@ -1,5 +1,6 @@
 import type { db as Db } from "@api/db";
 import { asset, auditLog } from "@api/db/schema";
+import { completeEvent, failEvent } from "@api/lib/outbox";
 import { generateId } from "@api/utils/id-generate";
 import type { bullMQConnection as BullMQConnection } from "@api/utils/que-factory";
 import type * as s3Module from "@api/utils/s3";
@@ -66,10 +67,11 @@ export async function createUploadWorker(
 
 	async function processUpload(job: Job) {
 		const { db, s3 } = resolved;
-		const { assetId, fileKey, mimeType } = job.data as {
+		const { assetId, fileKey, mimeType, outboxEventId } = job.data as {
 			assetId: string;
 			fileKey: string;
 			mimeType: string;
+			outboxEventId?: string;
 		};
 
 		const [existing] = await db
@@ -166,6 +168,8 @@ export async function createUploadWorker(
 				compressionRatio,
 			});
 
+			if (outboxEventId) await completeEvent(db, outboxEventId);
+
 			try {
 				await s3.rawS3.delete(fileKey);
 			} catch {
@@ -189,6 +193,9 @@ export async function createUploadWorker(
 					error,
 					attempts,
 				});
+
+				if (outboxEventId)
+					await failEvent(db, outboxEventId, error, { attempts });
 
 				try {
 					await s3.rawS3.delete(fileKey);
@@ -238,6 +245,12 @@ export async function createUploadWorker(
 			error,
 			attempts: job.attemptsMade,
 		});
+
+		if (job.data.outboxEventId) {
+			await failEvent(resolved.db, job.data.outboxEventId, error, {
+				attempts: job.attemptsMade,
+			});
+		}
 
 		if (job.data.fileKey) {
 			try {

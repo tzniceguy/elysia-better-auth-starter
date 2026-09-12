@@ -21,7 +21,7 @@ export {
 	staffStatusEnum,
 } from "./platform-schema";
 
-export { outbox } from "./outbox-schema";
+export { outboxEvent, outboxStatusEnum } from "./outbox-schema";
 
 export {
 	permission,

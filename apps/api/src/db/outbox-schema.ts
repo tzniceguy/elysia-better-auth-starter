@@ -1,25 +1,40 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+	index,
+	integer,
+	jsonb,
+	pgEnum,
+	pgTable,
+	text,
+	timestamp,
+	uuid,
+} from "drizzle-orm/pg-core";
 
-export const outbox = pgTable(
-	"outbox",
+export const outboxStatusEnum = pgEnum("outbox_status", [
+	"pending",
+	"completed",
+	"failed",
+]);
+
+export const outboxEvent = pgTable(
+	"outbox_event",
 	{
 		id: uuid("id").primaryKey(),
-		recipient: text("recipient").notNull(),
-		subject: text("subject").notNull(),
-		bodyHtml: text("body_html").notNull(),
-		kind: text("kind").notNull(),
-		status: text("status").default("pending").notNull(),
-		attempts: integer("attempts").default(0).notNull(),
-		nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-		sentAt: timestamp("sent_at", { withTimezone: true }),
-		lastError: text("last_error"),
-		metadata: jsonb("metadata"),
 		createdAt: timestamp("created_at", { withTimezone: true })
 			.defaultNow()
 			.notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		eventType: text("event_type").notNull(),
+		resourceId: text("resource_id").notNull(),
+		status: outboxStatusEnum("status").default("pending").notNull(),
+		payload: jsonb("payload").notNull(),
+		attempts: integer("attempts").default(0).notNull(),
+		lastError: text("last_error"),
+		nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
 	},
 	(table) => [
-		index("outbox_status_next_retry_idx").on(table.status, table.nextRetryAt),
-		index("outbox_recipient_idx").on(table.recipient),
+		index("outbox_event_status_idx").on(table.status),
+		index("outbox_event_resource_idx").on(table.eventType, table.resourceId),
 	],
 );

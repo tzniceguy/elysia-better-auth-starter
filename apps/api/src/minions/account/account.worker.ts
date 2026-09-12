@@ -1,5 +1,6 @@
 import type { db as Db } from "@api/db";
 import { customer, user } from "@api/db/schema";
+import { completeEvent, failEvent, recordEvent } from "@api/lib/outbox";
 import type { bullMQConnection as BullMQConnection } from "@api/utils/que-factory";
 import { type Job, Worker } from "bullmq";
 import { and, eq, lte } from "drizzle-orm";
@@ -57,50 +58,63 @@ export async function createAccountWorker(
 
 		if (!row) return;
 
-		const [account] = await db
-			.select({ email: user.email })
-			.from(user)
-			.where(eq(user.id, userId))
-			.limit(1);
+		const eventId = await recordEvent(db, {
+			eventType: "account.purge",
+			resourceId: userId,
+			payload: { customerId: row.id },
+		});
 
-		await db.delete(user).where(eq(user.id, userId));
+		try {
+			const [account] = await db
+				.select({ email: user.email })
+				.from(user)
+				.where(eq(user.id, userId))
+				.limit(1);
 
-		if (account?.email) {
-			try {
-				if (resolved.enqueueEmail) {
-					const mailMod = await import("@api/utils/mail");
-					const template = mailMod.noticeTemplate(
-						"Account deleted",
-						"Your account has been permanently deleted as requested.",
-					);
-					await resolved.enqueueEmail({
-						to: account.email,
-						subject: template.subject,
-						html: template.html,
-						kind: "account_deleted",
-					});
-				} else {
-					const queueMod = await import(
-						"@api/minions/notification/notification.queue"
-					);
-					const enqueueMod = await import(
-						"@api/minions/notification/enqueue"
-					);
-					const mailMod = await import("@api/utils/mail");
-					const template = mailMod.noticeTemplate(
-						"Account deleted",
-						"Your account has been permanently deleted as requested.",
-					);
-					await enqueueMod.enqueueEmail(db, queueMod.notificationQueue, {
-						to: account.email,
-						subject: template.subject,
-						html: template.html,
-						kind: "account_deleted",
-					});
+			await db.delete(user).where(eq(user.id, userId));
+
+			await completeEvent(db, eventId);
+
+			if (account?.email) {
+				try {
+					if (resolved.enqueueEmail) {
+						const mailMod = await import("@api/utils/mail");
+						const template = mailMod.noticeTemplate(
+							"Account deleted",
+							"Your account has been permanently deleted as requested.",
+						);
+						await resolved.enqueueEmail({
+							to: account.email,
+							subject: template.subject,
+							html: template.html,
+							kind: "account_deleted",
+						});
+					} else {
+						const queueMod = await import(
+							"@api/minions/notification/notification.queue"
+						);
+						const enqueueMod = await import(
+							"@api/minions/notification/enqueue"
+						);
+						const mailMod = await import("@api/utils/mail");
+						const template = mailMod.noticeTemplate(
+							"Account deleted",
+							"Your account has been permanently deleted as requested.",
+						);
+						await enqueueMod.enqueueEmail(db, queueMod.notificationQueue, {
+							to: account.email,
+							subject: template.subject,
+							html: template.html,
+							kind: "account_deleted",
+						});
+					}
+				} catch {
+					// notification is best-effort
 				}
-			} catch {
-				// notification is best-effort
 			}
+		} catch (e) {
+			await failEvent(db, eventId, e instanceof Error ? e.message : String(e));
+			throw e;
 		}
 	}
 
