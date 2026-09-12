@@ -13,11 +13,15 @@ export {
 	assetRelations,
 	assetStatusEnum,
 	assetTypeEnum,
+	auditActorTypeEnum,
+	auditLog,
 	customer,
 	staff,
 	staffRoleEnum,
 	staffStatusEnum,
 } from "./platform-schema";
+
+export { outboxEvent, outboxStatusEnum } from "./outbox-schema";
 
 export {
 	permission,

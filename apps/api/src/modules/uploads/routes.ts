@@ -35,6 +35,17 @@ const assetStateResponse = successSchema(
 		status: assetStatusSchema,
 		storageUrl: t.String(),
 		mimeType: t.Union([t.String(), t.Null()]),
+		processedSize: t.Optional(t.Union([t.Integer(), t.Null()])),
+		origWidth: t.Optional(t.Union([t.Integer(), t.Null()])),
+		origHeight: t.Optional(t.Union([t.Integer(), t.Null()])),
+		processingStartedAt: t.Optional(
+			t.Union([t.String({ format: "date-time" }), t.Null()]),
+		),
+		processingFinishedAt: t.Optional(
+			t.Union([t.String({ format: "date-time" }), t.Null()]),
+		),
+		processingError: t.Optional(t.Union([t.String(), t.Null()])),
+		attempts: t.Optional(t.Integer()),
 	}),
 );
 const getAssetResponse = successSchema(
@@ -44,6 +55,19 @@ const getAssetResponse = successSchema(
 		storageUrl: t.String(),
 		mimeType: t.Union([t.String(), t.Null()]),
 		assetType: t.String(),
+		rawKey: t.Optional(t.Union([t.String(), t.Null()])),
+		fileSize: t.Optional(t.Union([t.Integer(), t.Null()])),
+		processedSize: t.Optional(t.Union([t.Integer(), t.Null()])),
+		origWidth: t.Optional(t.Union([t.Integer(), t.Null()])),
+		origHeight: t.Optional(t.Union([t.Integer(), t.Null()])),
+		processingStartedAt: t.Optional(
+			t.Union([t.String({ format: "date-time" }), t.Null()]),
+		),
+		processingFinishedAt: t.Optional(
+			t.Union([t.String({ format: "date-time" }), t.Null()]),
+		),
+		processingError: t.Optional(t.Union([t.String(), t.Null()])),
+		attempts: t.Optional(t.Integer()),
 	}),
 );
 

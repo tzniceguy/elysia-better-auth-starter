@@ -118,7 +118,10 @@ apps/api/src/
 │  ├─ uploads/                  # fixed
 │  ├─ notifications/            # fixed (when implemented)
 │  └─ …                         # chat, analytics, etc. as needed
-├─ queues/ / workers/
+├─ minions/                  # background jobs (queue + worker per minion)
+│  ├─ account/               # account lifecycle (purge)
+│  ├─ upload/                # upload processing/transcode
+│  └─ notification/          # outbox-backed email fanout
 └─ utils/
    └─ auth.ts                   # fixed — betterAuth() config
 ```

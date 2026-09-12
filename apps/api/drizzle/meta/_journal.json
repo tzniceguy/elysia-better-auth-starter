@@ -50,6 +50,20 @@
       "when": 1788523324553,
       "tag": "0006_mean_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789203082830,
+      "tag": "0007_natural_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789207966251,
+      "tag": "0008_lazy_the_enforcers",
+      "breakpoints": true
     }
   ]
 }

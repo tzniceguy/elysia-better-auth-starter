@@ -1,5 +1,7 @@
 import type { db as Db } from "@api/db";
-import { asset } from "@api/db/schema";
+import { asset, auditLog } from "@api/db/schema";
+import { completeEvent, failEvent } from "@api/lib/outbox";
+import { generateId } from "@api/utils/id-generate";
 import type { bullMQConnection as BullMQConnection } from "@api/utils/que-factory";
 import type * as s3Module from "@api/utils/s3";
 import { type Job, Worker } from "bullmq";
@@ -47,12 +49,29 @@ export async function createUploadWorker(
 			? (deps as UploadWorkerDeps)
 			: await loadDeps();
 
+	async function writeAudit(
+		assetId: string,
+		action: string,
+		metadata?: Record<string, unknown>,
+	) {
+		await resolved.db.insert(auditLog).values({
+			id: generateId(),
+			actorType: "system" as never,
+			actorId: "upload-worker",
+			action,
+			entityType: "asset",
+			entityId: assetId,
+			metadata: (metadata ?? null) as never,
+		});
+	}
+
 	async function processUpload(job: Job) {
 		const { db, s3 } = resolved;
-		const { assetId, fileKey, mimeType } = job.data as {
+		const { assetId, fileKey, mimeType, outboxEventId } = job.data as {
 			assetId: string;
 			fileKey: string;
 			mimeType: string;
+			outboxEventId?: string;
 		};
 
 		const [existing] = await db
@@ -61,15 +80,27 @@ export async function createUploadWorker(
 			.where(eq(asset.id, assetId))
 			.limit(1);
 
-		if (existing?.status === "ready") return;
+		if (!existing || existing.status === "ready") return;
+
+		const attempts = job.attemptsMade + 1;
 
 		await db
 			.update(asset)
-			.set({ status: "processing", updatedAt: new Date() })
+			.set({
+				status: "processing",
+				processingStartedAt: new Date(),
+				attempts,
+				updatedAt: new Date(),
+			})
 			.where(eq(asset.id, assetId));
+
+		await writeAudit(assetId, "asset.process_started", { attempts });
 
 		const publicKey = s3.toPublicKey(assetId, mimeType);
 		let finalMime = mimeType;
+		let origWidth: number | null = null;
+		let origHeight: number | null = null;
+		let processedSize: number | null = null;
 
 		try {
 			if (mimeType.startsWith("image/")) {
@@ -81,7 +112,10 @@ export async function createUploadWorker(
 				}
 				let webpBytes: Uint8Array;
 				try {
-					webpBytes = await new Bun.Image(bytes).webp({ quality: 80 }).bytes();
+					const image = new Bun.Image(bytes);
+					origWidth = image.width;
+					origHeight = image.height;
+					webpBytes = await image.webp({ quality: 80 }).bytes();
 				} catch (e) {
 					throw new PermanentProcessingError(
 						e instanceof Error ? e.message : "Image transcode failed",
@@ -91,6 +125,7 @@ export async function createUploadWorker(
 					type: "image/webp",
 				});
 				finalMime = "image/webp";
+				processedSize = webpBytes.byteLength;
 			} else if (mimeType === "application/pdf") {
 				const bytes = await s3.rawS3.file(fileKey).arrayBuffer();
 				if (bytes.byteLength === 0) {
@@ -99,11 +134,17 @@ export async function createUploadWorker(
 				await s3.publicS3.write(publicKey, bytes, {
 					type: "application/pdf",
 				});
+				processedSize = bytes.byteLength;
 			} else {
 				throw new PermanentProcessingError(
 					`Unsupported mime type: ${mimeType}`,
 				);
 			}
+
+			const compressionRatio =
+				processedSize != null && existing.fileSize
+					? Number((processedSize / existing.fileSize).toFixed(4))
+					: null;
 
 			await db
 				.update(asset)
@@ -111,9 +152,23 @@ export async function createUploadWorker(
 					status: "ready",
 					storageUrl: s3.buildPublicUrl(publicKey),
 					mimeType: finalMime,
+					origWidth,
+					origHeight,
+					processedSize,
+					processingFinishedAt: new Date(),
+					attempts,
 					updatedAt: new Date(),
 				})
 				.where(eq(asset.id, assetId));
+
+			await writeAudit(assetId, "asset.process_ready", {
+				origWidth,
+				origHeight,
+				processedSize,
+				compressionRatio,
+			});
+
+			if (outboxEventId) await completeEvent(db, outboxEventId);
 
 			try {
 				await s3.rawS3.delete(fileKey);
@@ -122,10 +177,26 @@ export async function createUploadWorker(
 			}
 		} catch (e) {
 			if (e instanceof PermanentProcessingError) {
+				const error = e instanceof Error ? e.message : String(e);
 				await db
 					.update(asset)
-					.set({ status: "failed", updatedAt: new Date() })
+					.set({
+						status: "failed",
+						processingError: error,
+						processingFinishedAt: new Date(),
+						attempts,
+						updatedAt: new Date(),
+					})
 					.where(eq(asset.id, assetId));
+
+				await writeAudit(assetId, "asset.process_failed", {
+					error,
+					attempts,
+				});
+
+				if (outboxEventId)
+					await failEvent(db, outboxEventId, error, { attempts });
+
 				try {
 					await s3.rawS3.delete(fileKey);
 				} catch {
@@ -157,10 +228,29 @@ export async function createUploadWorker(
 
 		if (!isFinal || !job.data.assetId) return;
 
+		const error = err instanceof Error ? err.message : String(err);
+
 		await resolved.db
 			.update(asset)
-			.set({ status: "failed", updatedAt: new Date() })
+			.set({
+				status: "failed",
+				processingError: error,
+				processingFinishedAt: new Date(),
+				attempts: job.attemptsMade,
+				updatedAt: new Date(),
+			})
 			.where(eq(asset.id, job.data.assetId));
+
+		await writeAudit(job.data.assetId, "asset.process_failed", {
+			error,
+			attempts: job.attemptsMade,
+		});
+
+		if (job.data.outboxEventId) {
+			await failEvent(resolved.db, job.data.outboxEventId, error, {
+				attempts: job.attemptsMade,
+			});
+		}
 
 		if (job.data.fileKey) {
 			try {

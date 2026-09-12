@@ -1,7 +1,9 @@
 import type { db as Db } from "@api/db";
 
 import { asset } from "@api/db/schema";
-import type { uploadQueue as UploadQueue } from "@api/queues/upload/upload.queue";
+import { recordEvent } from "@api/lib/outbox";
+import type { uploadQueue as UploadQueue } from "@api/minions/upload/upload.queue";
+import { generateId } from "@api/utils/id-generate";
 import type * as s3Module from "@api/utils/s3";
 import { and, eq } from "drizzle-orm";
 
@@ -46,6 +48,15 @@ export interface GetAssetResult {
 	storageUrl: string;
 	mimeType: string | null;
 	assetType: string;
+	rawKey: string | null;
+	fileSize: number | null;
+	processedSize: number | null;
+	origWidth: number | null;
+	origHeight: number | null;
+	processingStartedAt: string | null;
+	processingFinishedAt: string | null;
+	processingError: string | null;
+	attempts: number;
 }
 
 export interface UploadsService {
@@ -82,7 +93,7 @@ async function loadDeps(): Promise<UploadsServiceDeps> {
 	if (cachedDeps) return cachedDeps;
 	const [dbMod, queueMod, s3] = await Promise.all([
 		import("@api/db"),
-		import("@api/queues/upload/upload.queue"),
+		import("@api/minions/upload/upload.queue"),
 		import("@api/utils/s3"),
 	]);
 	cachedDeps = { db: dbMod.db, uploadQueue: queueMod.uploadQueue, s3 };
@@ -120,9 +131,11 @@ export function createUploadsService(
 		const [assetRecord] = await db
 			.insert(asset)
 			.values({
+				id: generateId(),
 				assetType,
 				ownerId: input.userId,
 				storageUrl: "",
+				rawKey: fileKey,
 				mimeType: input.mimeType,
 				fileSize: input.size,
 				status: "uploading",
@@ -180,12 +193,22 @@ export function createUploadsService(
 			.set({ status: "uploaded", updatedAt: new Date() })
 			.where(eq(asset.id, input.assetId));
 
+		const outboxEventId = await recordEvent(db, {
+			eventType: "upload.process_requested",
+			resourceId: input.assetId,
+			payload: {
+				fileKey: input.fileKey,
+				mimeType: record.mimeType ?? "application/octet-stream",
+			},
+		});
+
 		await uploadQueue.add(
 			"processUpload",
 			{
 				assetId: input.assetId,
 				fileKey: input.fileKey,
 				mimeType: record.mimeType ?? "application/octet-stream",
+				outboxEventId,
 			},
 			{
 				jobId: input.assetId,
@@ -219,6 +242,17 @@ export function createUploadsService(
 			storageUrl: record.storageUrl,
 			mimeType: record.mimeType,
 			assetType: record.assetType,
+			rawKey: record.rawKey,
+			fileSize: record.fileSize,
+			processedSize: record.processedSize,
+			origWidth: record.origWidth,
+			origHeight: record.origHeight,
+			processingStartedAt: record.processingStartedAt?.toISOString() ?? null,
+			processingFinishedAt: !record.processingFinishedAt
+				? null
+				: record.processingFinishedAt.toISOString(),
+			processingError: record.processingError,
+			attempts: record.attempts ?? 1,
 		};
 	}
 

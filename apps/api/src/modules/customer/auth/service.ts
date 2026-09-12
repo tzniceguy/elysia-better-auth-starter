@@ -1,7 +1,14 @@
 import { db } from "@api/db";
 import { getCustomerByUserId } from "@api/db/lookups";
 import { customer } from "@api/db/schema";
+import {
+	buildForwardedRequest,
+	extractErrorMessage,
+	getSetCookieHeader,
+	readErrorBody,
+} from "@api/lib/auth-forward";
 import auth from "@api/utils/auth";
+import { env } from "@api/env";
 import { nanoid } from "nanoid";
 
 export interface CustomerSignUpInput {
@@ -111,41 +118,6 @@ export interface CustomerAuthServiceDeps {
 	cleanupUser?: (userId: string) => Promise<void>;
 }
 
-function buildForwardedRequest(
-	path: string,
-	input: Record<string, unknown>,
-	request: Request,
-	method: "GET" | "POST" = "POST",
-): Request {
-	const url = new URL(path, request.url);
-	const headers = new Headers({
-		"content-type": "application/json",
-	});
-
-	for (const key of [
-		"cookie",
-		"origin",
-		"user-agent",
-		"x-forwarded-for",
-		"x-forwarded-host",
-		"x-forwarded-proto",
-	] as const) {
-		const value = request.headers.get(key);
-		if (value) headers.set(key, value);
-	}
-
-	const init: RequestInit = { method, headers };
-	if (method !== "GET") init.body = JSON.stringify(input);
-	return new Request(url.href, init);
-}
-
-function getSetCookieHeader(response: Response): string | null {
-	const cookies = response.headers.getSetCookie?.();
-	if (cookies && cookies.length > 0) return cookies.join(", ");
-	const single = response.headers.get("set-cookie");
-	return single;
-}
-
 function formatCustomerProfile(
 	row: NonNullable<
 		Awaited<
@@ -167,17 +139,6 @@ function formatCustomerProfile(
 		},
 		lastActiveAt: row.lastActiveAt.toISOString(),
 		registeredAt: row.registeredAt.toISOString(),
-	};
-}
-
-function extractErrorMessage(
-	status: number,
-	err: Record<string, unknown>,
-): { status: number; code: string; message: string } {
-	return {
-		status,
-		code: (err.code as string) ?? "AUTH_ERROR",
-		message: (err.message as string) ?? "Authentication failed",
 	};
 }
 
@@ -437,7 +398,124 @@ export function createCustomerAuthService(deps?: CustomerAuthServiceDeps) {
 		return { ok: true, data: { success: true } };
 	}
 
-	return { signUp, login, logout, revokeSessions, listSessions, revokeSession };
+	async function forgetPassword(
+		input: { email: string; redirectTo?: string },
+		request: Request,
+	): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/request-password-reset",
+			{ email: input.email, redirectTo: input.redirectTo ?? env.APP_CUSTOMER_URL },
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = await readErrorBody(betterRes);
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	async function resetPassword(
+		input: { token: string; newPassword: string },
+		request: Request,
+	): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/reset-password",
+			{ token: input.token, newPassword: input.newPassword },
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = await readErrorBody(betterRes);
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	async function resendVerification(
+		input: { email: string },
+		request: Request,
+	): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/send-verification-email",
+			{ email: input.email, callbackURL: env.APP_CUSTOMER_URL },
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = await readErrorBody(betterRes);
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	async function changePassword(
+		input: { currentPassword: string; newPassword: string },
+		request: Request,
+	): Promise<LogoutResult> {
+		const forwarded = buildForwardedRequest(
+			"/api/auth/change-password",
+			{
+				currentPassword: input.currentPassword,
+				newPassword: input.newPassword,
+				revokeOtherSessions: true,
+			},
+			request,
+		);
+		const betterRes = await authHandler(forwarded);
+
+		if (!betterRes.ok) {
+			const err = await readErrorBody(betterRes);
+			return { ok: false, error: extractErrorMessage(betterRes.status, err) };
+		}
+
+		try {
+			const session = await auth.api.getSession({ headers: request.headers });
+			const email = session?.user?.email;
+			if (email) {
+				const { notificationQueue } = await import(
+					"@api/minions/notification/notification.queue"
+				);
+				const { enqueueEmail } = await import(
+					"@api/minions/notification/enqueue"
+				);
+				const { noticeTemplate } = await import("@api/utils/mail");
+				const template = noticeTemplate(
+					"Password changed",
+					"Your password was changed. If this was not you, reset it immediately.",
+				);
+				await enqueueEmail(db, notificationQueue, {
+					to: email,
+					subject: template.subject,
+					html: template.html,
+					kind: "password_changed",
+				});
+			}
+		} catch {
+			// notice is best-effort
+		}
+
+		return { ok: true, data: { success: true } };
+	}
+
+	return {
+		signUp,
+		login,
+		logout,
+		revokeSessions,
+		listSessions,
+		revokeSession,
+		forgetPassword,
+		resetPassword,
+		resendVerification,
+		changePassword,
+	};
 }
 
 async function defaultCreateCustomerProfile(data: {

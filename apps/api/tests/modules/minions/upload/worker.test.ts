@@ -17,7 +17,7 @@ import {
 	createUploadWorker,
 	PermanentProcessingError,
 	type UploadWorkerDeps,
-} from "@api/queues/upload/upload.worker";
+} from "@api/minions/upload/upload.worker";
 import type { Job } from "bullmq";
 
 const selectResults: Record<string, unknown>[] = [];
@@ -99,6 +99,7 @@ function makeJob(overrides?: Record<string, unknown>): Job {
 			assetId: "asset-1",
 			fileKey: "images/raw.png",
 			mimeType: "image/png",
+			outboxEventId: "evt-1",
 		},
 		opts: { attempts: 5 },
 		attemptsMade: 0,
@@ -124,6 +125,13 @@ describe("uploads worker", () => {
 
 	it("transcodes images to WebP, writes public and sets ready", async () => {
 		rawFileBuffers.push(PNG_BYTES.buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "image/png",
+			fileSize: 4000,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await processUpload(makeJob());
@@ -133,17 +141,25 @@ describe("uploads worker", () => {
 			key: "assets/asset-1.webp",
 			type: "image/webp",
 		});
-		expect(updateCalls).toHaveLength(2);
+		expect(updateCalls).toHaveLength(3);
 		expect(updateCalls[1]).toMatchObject({
 			status: "ready",
 			storageUrl: "https://public.example/assets/asset-1.webp",
 			mimeType: "image/webp",
 		});
+		expect(updateCalls[2]).toMatchObject({ status: "completed" });
 		expect(deletedKeys).toEqual(["images/raw.png"]);
 	});
 
 	it("passes PDFs through unchanged", async () => {
 		rawFileBuffers.push(Uint8Array.from([0x25, 0x50, 0x44, 0x46]).buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "application/pdf",
+			fileSize: 100,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await processUpload(
@@ -152,6 +168,7 @@ describe("uploads worker", () => {
 					assetId: "asset-1",
 					fileKey: "documents/raw.pdf",
 					mimeType: "application/pdf",
+					outboxEventId: "evt-1",
 				},
 			}),
 		);
@@ -165,6 +182,7 @@ describe("uploads worker", () => {
 			status: "ready",
 			mimeType: "application/pdf",
 		});
+		expect(updateCalls[2]).toMatchObject({ status: "completed" });
 		expect(deletedKeys).toEqual(["documents/raw.pdf"]);
 	});
 
@@ -185,6 +203,13 @@ describe("uploads worker", () => {
 
 	it("marks empty images as permanent failures", async () => {
 		rawFileBuffers.push(new Uint8Array(0).buffer);
+		selectResults.push({
+			id: "asset-1",
+			status: "uploading",
+			storageUrl: "",
+			mimeType: "image/png",
+			fileSize: 0,
+		});
 		const { processUpload } = await createUploadWorker(makeDeps());
 
 		await expect(processUpload(makeJob())).rejects.toThrow(
@@ -192,6 +217,7 @@ describe("uploads worker", () => {
 		);
 
 		expect(updateCalls[1]?.status).toBe("failed");
+		expect(updateCalls[2]).toMatchObject({ status: "failed" });
 		expect(deletedKeys).toEqual(["images/raw.png"]);
 	});
 
@@ -206,6 +232,7 @@ describe("uploads worker", () => {
 		);
 
 		expect(updateCalls[0]?.status).toBe("failed");
+		expect(updateCalls[1]).toMatchObject({ status: "failed" });
 		expect(deletedKeys).toEqual(["images/raw.png"]);
 		void worker;
 	});

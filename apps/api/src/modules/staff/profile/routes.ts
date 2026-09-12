@@ -122,6 +122,36 @@ export function createStaffProfileRoutes(
 							summary: "Update staff profile",
 						},
 					},
+				)
+				.get(
+					"/me",
+					async ({ staffSession, set }) => {
+						if (!staffSession) {
+							set.status = 403;
+							return fail("FORBIDDEN", "Staff only route");
+						}
+
+						const result = await service.get(
+							staffSession.staffId,
+							staffSession.userId,
+						);
+						if (!result.ok) {
+							set.status = result.error.status;
+							return fail(result.error.code, result.error.message);
+						}
+						return ok(result.data);
+					},
+					{
+						response: {
+							200: successResponse,
+							403: errorResponse,
+							404: errorResponse,
+						},
+						detail: {
+							tags: ["staff-profile"],
+							summary: "Get current staff (alias)",
+						},
+					},
 				),
 		);
 }
